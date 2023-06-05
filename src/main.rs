@@ -3,29 +3,33 @@ use std::{
     env,
     io::Error as IoError,
     net::SocketAddr,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
 };
 
-use futures_util::{future, pin_mut, StreamExt, stream::{TryStreamExt, SplitStream}};
+use futures_util::{
+    future, pin_mut,
+    stream::{SplitStream, TryStreamExt},
+    StreamExt,
+};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::time::{timeout, Duration};
 
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message, WebSocketStream};
 use tokio_tungstenite::MaybeTlsStream;
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message, WebSocketStream};
 
-use futures_channel::mpsc::{UnboundedSender, unbounded, UnboundedReceiver};
-
+use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 
 // for axum
-use axum::{Server,
+use axum::extract::ws::Message as axum_Message;
+use axum::{
     extract::ws::{WebSocket, WebSocketUpgrade},
     extract::State,
-    routing::{get, post},
     http::StatusCode,
     response::IntoResponse,
-    Json, Router, TypedHeader
+    routing::{get, post},
+    Json, Router, Server, TypedHeader,
 };
-use axum::extract::ws::Message as axum_Message;
 
 //allows to extract the IP of connecting user
 use axum::extract::connect_info::ConnectInfo;
@@ -38,10 +42,10 @@ use tower_http::{
 // use axum_extra::TypedHeader;
 use serde::{Deserialize, Serialize};
 
-
 type Tx = UnboundedSender<axum::extract::ws::Message>;
 type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 
+type ConnectionState = Arc<RwLock<HashMap<String, HashMap<SocketAddr, Tx>>>>;
 
 // helper function for conversions from tungstenite message to axum message
 fn from_tungstenite(message: Message) -> Option<axum::extract::ws::Message> {
@@ -61,13 +65,35 @@ fn from_tungstenite(message: Message) -> Option<axum::extract::ws::Message> {
     }
 }
 
+async fn subscribe_to_market_data(url_string: &str, peer_map: PeerMap) {
+    println!("running subscribe to market data");
+    let url = url::Url::parse(url_string).unwrap();
 
- async fn subscribe_to_market_data(){
+    let a = timeout(Duration::from_secs(5), tokio::time::sleep(Duration::from_secs(5))).await;
 
- }
+    let result = match timeout(Duration::from_secs(3), connect_async(url)).await {
+        Ok(response) => response,
+        Err(err) => {
+            // Error occurred or connection timed out
+            println!("Timeout Error: {:?}", err);
+            return ()
+        },
+    };
 
-//testing lifetimes
-async fn process_messages(read: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>, peer_map: PeerMap){
+    let (ws_stream, _) = match result
+    {
+        Ok(whatever) => whatever,
+        Err(err) =>{
+            println!("Connection Error: {:?}", err);
+            return ()
+        },
+    };
+
+    // let (ws_stream, _) = result.unwrap();
+
+    // let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
+    println!("WebSocket handshake has been successfully completed");
+    let (write, read) = ws_stream.split();
     read.for_each(|message| async {
         let msg = message.unwrap();
         let data = msg.clone().into_data();
@@ -81,22 +107,43 @@ async fn process_messages(read: SplitStream<WebSocketStream<MaybeTlsStream<TcpSt
             let ms = from_tungstenite(msg.clone()).unwrap();
             recp.unbounded_send(ms).unwrap();
         }
-    }).await;
+    })
+    .await;
 }
 
+//testing lifetimes
+async fn process_messages(
+    read: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+    peer_map: PeerMap,
+) {
+    read.for_each(|message| async {
+        let msg = message.unwrap();
+        let data = msg.clone().into_data();
+        // tokio::io::stdout().write_all(&data).await.unwrap();
+
+        let locked_state = peer_map.lock().unwrap();
+
+        let the_listeners = locked_state.iter().map(|(_, ws_sink)| ws_sink);
+        for recp in the_listeners {
+            println!("sending to listerner");
+            let ms = from_tungstenite(msg.clone()).unwrap();
+            recp.unbounded_send(ms).unwrap();
+        }
+    })
+    .await;
+}
 
 #[tokio::main]
 async fn main() {
-
     // to hold all the ws connections
+    println!("Running main..");
     let state = PeerMap::new(Mutex::new(HashMap::new()));
 
     // let connect_addr =
     //     env::args().nth(1).unwrap_or_else(|| panic!("this program requires at least one argument"));
-        // let url = url::Url::parse(&connect_addr).unwrap();
+    // let url = url::Url::parse(&connect_addr).unwrap();
 
     let url = url::Url::parse("ws://internal-prod-cbag-726087086.ap-northeast-1.elb.amazonaws.com:8080/ws/bookstats/BTC-USDT.PERP?markets=BINANCE,BINANCEFUTURES,DYDX,COINBASE&depth_limit=10&iterval_ms=1000").unwrap();
-
 
     let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
     tokio::spawn(read_stdin(stdin_tx));
@@ -106,9 +153,7 @@ async fn main() {
 
     let (write, read) = ws_stream.split();
 
-
     let stdin_to_ws = stdin_rx.map(Ok).forward(write);
-
 
     // let ws_to_stdout = {
     //     read.for_each(|message| async {
@@ -130,8 +175,9 @@ async fn main() {
     // pin_mut!(stdin_to_ws, ws_to_stdout);
     // pin_mut!(stdin_to_ws);
 
-
     let ws_to_stdout = tokio::spawn(process_messages(read, state.clone()));
+
+    let test_separate_process = tokio::spawn(subscribe_to_market_data("ws://internal-prod-cbag-726087086.ap-northeast-1.elb.amazonaws.com:8080/ws/bookstats/BTC-USDT.PERP?markets=BINANCE,BINANCEFUTURES,DYDX,COINBASE&depth_limit=10&iterval_ms=1000", state.clone()));
 
     // let stdin_to_ws_task = tokio::spawn(async {
     //     pin_mut!(stdin_to_ws);
@@ -143,8 +189,6 @@ async fn main() {
     // });
 
     // pin_mut!(stdin_to_ws_task), ws_to_stdout);
-
-
 
     // axum stuff only
     // initialize tracing
@@ -158,11 +202,11 @@ async fn main() {
         // .route("/users", post(create_user));
         .route("/ws", get(axum_ws_handler))
         .with_state(state.clone());
-        // logging so we can see whats going on
-        // .layer(
-        //     TraceLayer::new_for_http()
-        //         .make_span_with(DefaultMakeSpan::default().include_headers(true)),
-        // );
+    // logging so we can see whats going on
+    // .layer(
+    //     TraceLayer::new_for_http()
+    //         .make_span_with(DefaultMakeSpan::default().include_headers(true)),
+    // );
 
     // run our app with hyper, listening globally on port 3000
     // let listener = tokio::net::TcpListener::bind("0.0.0.0:9089").await.unwrap();
@@ -177,9 +221,6 @@ async fn main() {
 
     // end of axum stuff
 
-
-
-
     // // Set up a server to listen for websocket connections
     // let addr = env::args().nth(1).unwrap_or_else(|| "127.0.0.1:9080".to_string());
     // // let state = PeerMap::new(Mutex::new(HashMap::new()));
@@ -188,13 +229,13 @@ async fn main() {
     // let listener = try_socket.expect("Failed to bind");
     // println!("Listening on: {}", addr);
 
-
     // // listen_for_connections(listener, state).await;
     // tokio::spawn(listen_for_connections(listener, state.clone()));
 
     // future::select(stdin_to_ws, ws_to_stdout).await;
     pin_mut!(stdin_to_ws, ws_to_stdout);
     future::select(stdin_to_ws, ws_to_stdout).await;
+
     // ws_to_stdout.await.unwrap();
 }
 
@@ -203,7 +244,7 @@ async fn axum_ws_handler(
     ws: WebSocketUpgrade,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    State(state): State<PeerMap>
+    State(state): State<PeerMap>,
 ) -> impl IntoResponse {
     let user_agent = if let Some(TypedHeader(user_agent)) = user_agent {
         user_agent.to_string()
@@ -221,21 +262,24 @@ async fn root() -> &'static str {
     "Hello, World!"
 }
 
-
-
 /// Actual websocket statemachine (one will be spawned per connection)
 // #[axum_macros::debug_handler]
 async fn axum_handle_socket(mut websocket: WebSocket, who: SocketAddr, peer_map: PeerMap) {
-
-
     // added by karun
-    let (tx, rx) : (UnboundedSender<axum_Message>, UnboundedReceiver<axum_Message>) = unbounded();
+    let (tx, rx): (
+        UnboundedSender<axum_Message>,
+        UnboundedReceiver<axum_Message>,
+    ) = unbounded();
     // let (tx, rx) = unbounded();
     peer_map.lock().unwrap().insert(who, tx);
     let (outgoing, incoming) = websocket.split();
 
     let broadcast_incoming = incoming.try_for_each(|msg| {
-        println!("Received a message from {}: {}", who, msg.to_text().unwrap());
+        println!(
+            "Received a message from {}: {}",
+            who,
+            msg.to_text().unwrap()
+        );
         let peers = peer_map.lock().unwrap();
 
         // We want to broadcast the message to everyone except ourselves.
@@ -266,17 +310,7 @@ async fn axum_handle_socket(mut websocket: WebSocket, who: SocketAddr, peer_map:
     println!("{} disconnected", &who);
     peer_map.lock().unwrap().remove(&who);
 
-
-
     // end of added by karun
-
-
-
-
-
-
-
-
 
     //send a ping (unsupported by some browsers) just to kick things off and get a response
     // if socket.send(Message::Ping(vec![1, 2, 3])).await.is_ok() {
@@ -423,7 +457,6 @@ async fn axum_handle_socket(mut websocket: WebSocket, who: SocketAddr, peer_map:
 //     println!("{} disconnected", &addr);
 //     peer_map.lock().unwrap().remove(&addr);
 // }
-
 
 // async fn listen_for_connections(listener: TcpListener, state: PeerMap){
 //     println!("listening for connections");
