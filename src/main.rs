@@ -138,97 +138,105 @@ fn subscribe_to_market_data(
     let full_url = format!("ws://{}{}", cbag_uri, ws_endpoint);
 
     tokio::spawn(async move {
-        info!("running subscribe to market data");
+        info!("Attempting to connect to {}", &ws_endpoint);
         let url = url::Url::parse(&full_url).unwrap();
-
-        let result = match timeout(Duration::from_secs(3), connect_async(url)).await {
-            Ok(response) => response,
-            Err(err) => {
-                // Error occurred or connection timed out
-                error!("Timeout Error: {:?}", err);
-                return ();
-            }
-        };
-
-        let (ws_stream, _) = match result {
-            Ok(whatever) => whatever,
-            Err(err) => {
-                info!("Connection Error: {:?}", err);
-                return ();
-            }
-        };
-
-        info!(
-            "WebSocket handshake for {} has been successfully completed",
-            &ws_endpoint
-        );
-        let (_write, mut read) = ws_stream.split();
+        let mut closing_down = false;
+        // TODO: after x number of timeouts, should check if clients are still connected
         loop {
-            let message = read.next().await;
-            let msg = message.unwrap();
-            match msg {
-                Ok(message_text) => {
-                    // let data = message_text.clone().into_data();
-                    // let data = msg.clone().into_data();
-                    // tokio::io::stdout().write_all(&data).await.unwrap();
+            let result = match timeout(Duration::from_secs(3), connect_async(url.clone())).await {
+                Ok(response) => response,
+                Err(err) => {
+                    // Error occurred or connection timed out
+                    error!("Timeout Error: {:?}", err);
+                    continue;
+                }
+            };
 
-                    let number_of_active_listeners: usize;
-                    // this is a read lock only
-                    {
-                        let locked_state = connection_state.read().unwrap();
-                        let listener_hash_map = locked_state.get(&ws_endpoint);
-                        let active_listeners = match listener_hash_map {
-                            Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
-                            None => {
-                                info!("subsciption no longer required");
-                                return;
-                                //todo quite this stream, no longer require
-                            }
-                        };
-                        // when there are no more clients subscribed to this ws subscription,
-                        // we can close in a write lock to avoid race conditions agains
-                        // new clients subscriptions that might come in whilst the
-                        // subscription is being removed from the connection state
-                        number_of_active_listeners = active_listeners.len();
-                        for recp in active_listeners {
-                            let ms = from_tungstenite(message_text.clone()).unwrap();
-                            match recp.unbounded_send(ms) {
-                                Ok(_) => (),
-                                Err(_try_send_error) => {
-                                    warn!("Sending error, client likely disconnected.");
+            let (ws_stream, _) = match result {
+                Ok(whatever) => whatever,
+                Err(err) => {
+                    info!("Connection Error: {:?}", err);
+                    continue;
+                }
+            };
+
+            info!(
+                "WebSocket handshake for {} has been successfully completed",
+                &ws_endpoint
+            );
+            let (_write, mut read) = ws_stream.split();
+            loop {
+                let message = read.next().await;
+                let msg = message.unwrap();
+                match msg {
+                    Ok(message_text) => {
+                        // let data = message_text.clone().into_data();
+                        // let data = msg.clone().into_data();
+                        // tokio::io::stdout().write_all(&data).await.unwrap();
+
+                        let number_of_active_listeners: usize;
+                        // this is a read lock only
+                        {
+                            let locked_state = connection_state.read().unwrap();
+                            let listener_hash_map = locked_state.get(&ws_endpoint);
+                            let active_listeners = match listener_hash_map {
+                                Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
+                                None => {
+                                    info!("subsciption no longer required");
+                                    return;
+                                    //todo quite this stream, no longer require
+                                }
+                            };
+                            // when there are no more clients subscribed to this ws subscription,
+                            // we can close in a write lock to avoid race conditions agains
+                            // new clients subscriptions that might come in whilst the
+                            // subscription is being removed from the connection state
+                            number_of_active_listeners = active_listeners.len();
+                            for recp in active_listeners {
+                                let ms = from_tungstenite(message_text.clone()).unwrap();
+                                match recp.unbounded_send(ms) {
+                                    Ok(_) => (),
+                                    Err(_try_send_error) => {
+                                        warn!("Sending error, client likely disconnected.");
+                                    }
                                 }
                             }
                         }
-                    }
-                    if number_of_active_listeners == 0 {
-                        let mut locked_state = connection_state.write().unwrap();
-                        // check again there are no new clients for the subsctiption
-                        // client_subscriptions = connection_state_lock.
-                        let listener_hash_map = locked_state.get(&ws_endpoint);
-                        let active_listeners = match listener_hash_map {
-                            Some(listeners) => listeners,
-                            None => {
-                                info!("Subscription {} no longer required", &ws_endpoint);
-                                return;
-                            }
-                        };
-                        if active_listeners.len() == 0 {
-                            info!(
-                                "Removing subscription {} from subscriptions \
+                        if number_of_active_listeners == 0 {
+                            let mut locked_state = connection_state.write().unwrap();
+                            // check again there are no new clients for the subsctiption
+                            // client_subscriptions = connection_state_lock.
+                            let listener_hash_map = locked_state.get(&ws_endpoint);
+                            let active_listeners = match listener_hash_map {
+                                Some(listeners) => listeners,
+                                None => {
+                                    info!("Subscription {} no longer required", &ws_endpoint);
+                                    closing_down = true;
+                                    break;
+                                }
+                            };
+                            if active_listeners.len() == 0 {
+                                info!(
+                                    "Removing subscription {} from subscriptions \
                             no more listeners",
-                                &ws_endpoint
-                            );
-                            locked_state.remove(&ws_endpoint);
-                            break;
+                                    &ws_endpoint
+                                );
+                                locked_state.remove(&ws_endpoint);
+                                closing_down = true;
+                                break;
+                            }
                         }
                     }
+                    Err(err) => {
+                        error!(
+                            "Error parsing message on subscription {} Error {}",
+                            &ws_endpoint, err
+                        )
+                    }
                 }
-                Err(err) => {
-                    error!(
-                        "Error parsing message on subscription {} Error {}",
-                        &ws_endpoint, err
-                    )
-                }
+            }
+            if closing_down{
+                break;
             }
         }
         info!("Subscription task for {} exiting", ws_endpoint);
