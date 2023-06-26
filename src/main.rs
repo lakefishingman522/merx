@@ -4,11 +4,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use futures_util::{
-    future, pin_mut,
-    stream::TryStreamExt,
-    StreamExt,
-};
+use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
 use tokio::task::JoinHandle;
 use tokio::time::{timeout, Duration};
 
@@ -32,7 +28,11 @@ use reqwest::Client;
 use axum::extract::connect_info::ConnectInfo;
 use axum::extract::ws::CloseFrame;
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
+use tracing::{info, warn, error};
 use tracing_subscriber::EnvFilter;
+
+// use env_logger::Builder;
+// use log::{info, LevelFilter};
 
 type Tx = UnboundedSender<axum::extract::ws::Message>;
 type ConnectionState = Arc<RwLock<HashMap<String, HashMap<SocketAddr, Tx>>>>;
@@ -59,7 +59,7 @@ fn subscribe_to_market_data(
     ws_endpoint: &str,
     connection_state: ConnectionState,
 ) -> JoinHandle<()> {
-    println!("Starting a new subscription to {}", ws_endpoint);
+    info!("Starting a new subscription to {}", ws_endpoint);
     //TODO: add this as a parameter
     let ws_endpoint = ws_endpoint.to_owned();
     let full_url = format!(
@@ -68,14 +68,14 @@ fn subscribe_to_market_data(
     );
 
     tokio::spawn(async move {
-        println!("running subscribe to market data");
+        info!("running subscribe to market data");
         let url = url::Url::parse(&full_url).unwrap();
 
         let result = match timeout(Duration::from_secs(3), connect_async(url)).await {
             Ok(response) => response,
             Err(err) => {
                 // Error occurred or connection timed out
-                println!("Timeout Error: {:?}", err);
+                info!("Timeout Error: {:?}", err);
                 return ();
             }
         };
@@ -83,12 +83,15 @@ fn subscribe_to_market_data(
         let (ws_stream, _) = match result {
             Ok(whatever) => whatever,
             Err(err) => {
-                println!("Connection Error: {:?}", err);
+                info!("Connection Error: {:?}", err);
                 return ();
             }
         };
 
-        println!("WebSocket handshake has been successfully completed");
+        info!(
+            "WebSocket handshake for {} has been successfully completed",
+            &ws_endpoint
+        );
         let (_write, mut read) = ws_stream.split();
         loop {
             let message = read.next().await;
@@ -107,7 +110,7 @@ fn subscribe_to_market_data(
                         let active_listeners = match listener_hash_map {
                             Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
                             None => {
-                                println!("subsciption no longer required");
+                                info!("subsciption no longer required");
                                 return;
                                 //todo quite this stream, no longer require
                             }
@@ -118,17 +121,15 @@ fn subscribe_to_market_data(
                         // subscription is being removed from the connection state
                         number_of_active_listeners = active_listeners.len();
                         for recp in active_listeners {
-                            println!("sending to listerner");
                             let ms = from_tungstenite(message_text.clone()).unwrap();
                             match recp.unbounded_send(ms) {
                                 Ok(_) => (),
                                 Err(_try_send_error) => {
-                                    println!("Sending error");
+                                    warn!("Sending error, client likely disconnected.");
                                 }
                             }
                         }
                     }
-                    println!("there are {}", number_of_active_listeners);
                     if number_of_active_listeners == 0 {
                         let mut locked_state = connection_state.write().unwrap();
                         // check again there are no new clients for the subsctiption
@@ -137,43 +138,45 @@ fn subscribe_to_market_data(
                         let active_listeners = match listener_hash_map {
                             Some(listeners) => listeners,
                             None => {
-                                println!("subsciption no longer required");
+                                info!("Subscription {} no longer required", &ws_endpoint);
                                 return;
                             }
                         };
                         if active_listeners.len() == 0 {
-                            println!("Removing subscription {} from subscriptions", &ws_endpoint);
+                            info!(
+                                "Removing subscription {} from subscriptions \
+                            no more listeners",
+                                &ws_endpoint
+                            );
                             locked_state.remove(&ws_endpoint);
                             break;
                         }
                     }
                 }
                 Err(err) => {
-                    println!(
+                    error!(
                         "Error parsing message on subscription {} Error {}",
                         &ws_endpoint, err
                     )
                 }
             }
         }
-        println!("Subscription task for {} exiting", ws_endpoint);
+        info!("Subscription task for {} exiting", ws_endpoint);
     })
 }
 
-
 #[tokio::main]
 async fn main() {
-    println!("Running Proxy");
-    // connection state which will hold a state of all subscriptions
-    // and their respective clients
-    let connection_state = ConnectionState::new(RwLock::new(HashMap::new()));
-
     // Configure the tracing subscriber
     let filter = EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into());
-
     tracing_subscriber::fmt::Subscriber::builder()
         .with_env_filter(filter)
         .init();
+    info!("Running Market Data Proxy");
+
+    // connection state which will hold a state of all subscriptions
+    // and their respective clients
+    let connection_state = ConnectionState::new(RwLock::new(HashMap::new()));
 
     // build our application with a route
     let app = Router::new()
@@ -190,6 +193,7 @@ async fn main() {
         .route("/ws/bookstats/:symbol", get(axum_ws_handler))
         .route("/ws/legacy-cbbo/:symbol", get(axum_ws_handler))
         .route("/ws/cost-calculator/:symbol", get(axum_ws_handler))
+        .fallback(fallback)
         .with_state(connection_state.clone())
         // logging so we can see whats going on
         .layer(
@@ -202,15 +206,20 @@ async fn main() {
     // axum::serve(listener, app).await.unwrap();
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 9089));
-    tracing::debug!("listening on {}", addr);
-    println!("starting websocket server");
+    info!("Starting Axum Server on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .unwrap();
 }
 
+async fn fallback(uri: Uri, OriginalUri(original_uri): OriginalUri) -> (StatusCode, String) {
+    warn!("Request for unknown route {}", original_uri);
+    (StatusCode::NOT_FOUND, format!("No route for {}", uri))
+}
+
 async fn forward_request(OriginalUri(original_uri): OriginalUri) -> impl IntoResponse {
+    info!("Received REST Forward Request {}", original_uri);
     let server_url = "http://internal-prod-cbag-726087086.ap-northeast-1.elb.amazonaws.com:8080";
     let target_url = format!("{}{}", server_url, original_uri);
 
@@ -259,7 +268,7 @@ async fn axum_ws_handler(
     } else {
         String::from("Unknown browser")
     };
-    println!("`{user_agent}` at {addr} connected. requesting subscription: {original_uri}");
+    info!("{addr} connected User-Agent {user_agent}. Requesting subscription: {original_uri}");
     // we can customize the callback by sending additional info such as original_uri.
     ws.on_upgrade(move |socket| axum_handle_socket(socket, addr, original_uri, state))
 }
@@ -311,13 +320,13 @@ async fn axum_handle_socket(
         if !already_subscribed {
             let _handle =
                 subscribe_to_market_data(&request_endpoint_str, Arc::clone(&connection_state));
-            println!("Got the handle, all done!");
+            info!("Got the handle, all done!");
         }
     }
 
     // this is unused but good to log incase there are incoming messages
     let broadcast_incoming = incoming.try_for_each(|msg| {
-        println!(
+        info!(
             "Received a message from {}: {}",
             client_address,
             msg.to_text().unwrap()
@@ -330,18 +339,18 @@ async fn axum_handle_socket(
     pin_mut!(broadcast_incoming, receive_from_others);
     future::select(broadcast_incoming, receive_from_others).await;
 
-    println!("{} disconnected", &client_address);
+    info!("{} disconnected", &client_address);
 
     // remove from the client from the connection state
     {
         let mut connection_state_locked = connection_state.write().unwrap();
         if let Some(ws_endpoint_clients) = connection_state_locked.get_mut(&request_endpoint_str) {
             ws_endpoint_clients.remove(&client_address);
-            println!("There are {} clients remaining", ws_endpoint_clients.len());
+            info!("There are {} clients remaining", ws_endpoint_clients.len());
         } else {
             panic!("Expected key in connection state not found")
         }
     }
     // returning from the handler closes the websocket connection
-    println!("Websocket context {} destroyed", client_address);
+    info!("Websocket context {} destroyed", client_address);
 }
