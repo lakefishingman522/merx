@@ -11,20 +11,20 @@ use futures_util::{
     stream::{SplitStream, TryStreamExt},
     StreamExt,
 };
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, task::JoinHandle};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{timeout, Duration};
 
-use tokio_tungstenite::MaybeTlsStream;
+use tokio_tungstenite::{MaybeTlsStream, tungstenite::client};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message, WebSocketStream};
 
 use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 
 // for axum
-use axum::extract::ws::Message as axum_Message;
+use axum::{extract::ws::Message as axum_Message, http::Uri};
 use axum::{
     extract::ws::{WebSocket, WebSocketUpgrade},
-    extract::State,
+    extract::{self, State, Path, Query, OriginalUri},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -34,16 +34,18 @@ use axum::{
 //allows to extract the IP of connecting user
 use axum::extract::connect_info::ConnectInfo;
 use axum::extract::ws::CloseFrame;
+use tracing::Level;
+use tracing_subscriber::{EnvFilter, fmt::Subscriber};
 use tower_http::{
     services::ServeDir,
-    trace::{DefaultMakeSpan, TraceLayer},
+    trace::{DefaultMakeSpan, TraceLayer, DefaultOnRequest, DefaultOnResponse},
 };
 
 // use axum_extra::TypedHeader;
 use serde::{Deserialize, Serialize};
 
 type Tx = UnboundedSender<axum::extract::ws::Message>;
-type PeerMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
+type WSClientMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
 
 type ConnectionState = Arc<RwLock<HashMap<String, HashMap<SocketAddr, Tx>>>>;
 
@@ -65,56 +67,131 @@ fn from_tungstenite(message: Message) -> Option<axum::extract::ws::Message> {
     }
 }
 
-async fn subscribe_to_market_data(url_string: &str, peer_map: PeerMap) {
-    println!("running subscribe to market data");
-    let url = url::Url::parse(url_string).unwrap();
+fn subscribe_to_market_data(ws_endpoint: &str, connection_state: ConnectionState) -> JoinHandle<()> {
+    println!("Starting a new subscription to {}", ws_endpoint);
+    //TODO: add this as a parameter
+    let ws_endpoint = ws_endpoint.to_owned();
+    let full_url = format!("{}{}",
+        "ws://internal-prod-cbag-726087086.ap-northeast-1.elb.amazonaws.com:8080",
+        ws_endpoint);
 
-    let a = timeout(Duration::from_secs(5), tokio::time::sleep(Duration::from_secs(5))).await;
+    tokio::spawn(async move {
+        println!("running subscribe to market data");
+        let url = url::Url::parse(&full_url).unwrap();
 
-    let result = match timeout(Duration::from_secs(3), connect_async(url)).await {
-        Ok(response) => response,
-        Err(err) => {
-            // Error occurred or connection timed out
-            println!("Timeout Error: {:?}", err);
-            return ()
-        },
-    };
+        let result = match timeout(Duration::from_secs(3), connect_async(url)).await {
+            Ok(response) => response,
+            Err(err) => {
+                // Error occurred or connection timed out
+                println!("Timeout Error: {:?}", err);
+                return ()
+            },
+        };
 
-    let (ws_stream, _) = match result
-    {
-        Ok(whatever) => whatever,
-        Err(err) =>{
-            println!("Connection Error: {:?}", err);
-            return ()
-        },
-    };
+        let (ws_stream, _) = match result
+        {
+            Ok(whatever) => whatever,
+            Err(err) =>{
+                println!("Connection Error: {:?}", err);
+                return ()
+            },
+        };
 
-    // let (ws_stream, _) = result.unwrap();
+        // let (ws_stream, _) = result.unwrap();
 
-    // let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
-    println!("WebSocket handshake has been successfully completed");
-    let (write, read) = ws_stream.split();
-    read.for_each(|message| async {
-        let msg = message.unwrap();
-        let data = msg.clone().into_data();
-        tokio::io::stdout().write_all(&data).await.unwrap();
+        // let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
+        println!("WebSocket handshake has been successfully completed");
+        let (write, mut read) = ws_stream.split();
+        // let message = read.next().await else {
+        //     println!("issue on stream");
+        // }
+        loop {
+        // read.for_each(|message| async {
+            let message = read.next().await;
+            let msg = message.unwrap();
+            match msg {
+                Ok(message_text) => {
+                    let data = message_text.clone().into_data();
+                    // let data = msg.clone().into_data();
+                    // tokio::io::stdout().write_all(&data).await.unwrap();
 
-        let locked_state = peer_map.lock().unwrap();
+                    // this is a read lock only
+                    let locked_state = connection_state.read().unwrap();
 
-        let the_listeners = locked_state.iter().map(|(_, ws_sink)| ws_sink);
-        for recp in the_listeners {
-            println!("sending to listerner");
-            let ms = from_tungstenite(msg.clone()).unwrap();
-            recp.unbounded_send(ms).unwrap();
+
+                    // let the_listeners = locked_state.get("hello").iter().map(|(_, ws_sink)| ws_sink);
+                    // let the_listeners = locked_state.get("hello").and_then(iter().map(|(ws_sink, _)| ws_sink));
+                    // let the_listeners = locked_state.get("hello").unwrap_or_default().iter().map(|(_, ws_sink)| ws_sink);
+
+                    // let the_listeners = locked_state
+                    //     .get("hello")
+                    //     .and_then(|ws_sink| Some(ws_sink.iter().map(|(_, ws_sink)| ws_sink)))
+                    //     .unwrap_or_else(|| std::iter::empty());
+                    // println!("received data from {}\n", url_string);
+                    let listener_hash_map = locked_state.get(&ws_endpoint);
+
+
+                    let active_listeners = match listener_hash_map {
+                        Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
+                        None => {
+                            println!("subsciption no longer required");
+                            return
+                            //todo quite this stream, no longer require
+                        }
+                    };
+
+                    for recp in active_listeners {
+                        println!("sending to listerner");
+                        let ms = from_tungstenite(message_text.clone()).unwrap();
+                        match recp.unbounded_send(ms) {
+                            Ok(_) => (),
+                            Err(try_send_error) => {println!("Sending error");}
+                        }
+                    }
+                },
+                Err(err) => {},
+            }
+            // // let data = msg.clone().into_data();
+            // // tokio::io::stdout().write_all(&data).await.unwrap();
+
+            // // this is a read lock only
+            // let locked_state = connection_state.read().unwrap();
+
+            // // let the_listeners = locked_state.get("hello").iter().map(|(_, ws_sink)| ws_sink);
+            // // let the_listeners = locked_state.get("hello").and_then(iter().map(|(ws_sink, _)| ws_sink));
+            // // let the_listeners = locked_state.get("hello").unwrap_or_default().iter().map(|(_, ws_sink)| ws_sink);
+
+            // // let the_listeners = locked_state
+            // //     .get("hello")
+            // //     .and_then(|ws_sink| Some(ws_sink.iter().map(|(_, ws_sink)| ws_sink)))
+            // //     .unwrap_or_else(|| std::iter::empty());
+            // // println!("received data from {}\n", url_string);
+            // let listener_hash_map = locked_state.get(url_string);
+            // let active_listeners = match listener_hash_map {
+            //     Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
+            //     None => {
+            //         // println!("subsciption no longer required");
+            //         return
+            //         //todo quite this stream, no longer require
+            //     }
+            // };
+
+            // for recp in active_listeners {
+            //     println!("sending to listerner");
+            //     let ms = from_tungstenite(msg.clone()).unwrap();
+            //     recp.unbounded_send(ms).unwrap();
+            // }
+        // })
+        // .await;
         }
+
     })
-    .await;
 }
 
 //testing lifetimes
 async fn process_messages(
     read: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
-    peer_map: PeerMap,
+    peer_map: WSClientMap,
 ) {
     read.for_each(|message| async {
         let msg = message.unwrap();
@@ -137,7 +214,9 @@ async fn process_messages(
 async fn main() {
     // to hold all the ws connections
     println!("Running main..");
-    let state = PeerMap::new(Mutex::new(HashMap::new()));
+    let state = WSClientMap::new(Mutex::new(HashMap::new()));
+    // let connection_state = ConnectionState::new(RwLock::new(HashMap::new()));
+    let connection_state = ConnectionState::new(RwLock::new(HashMap::new()));
 
     // let connect_addr =
     //     env::args().nth(1).unwrap_or_else(|| panic!("this program requires at least one argument"));
@@ -155,29 +234,19 @@ async fn main() {
 
     let stdin_to_ws = stdin_rx.map(Ok).forward(write);
 
-    // let ws_to_stdout = {
-    //     read.for_each(|message| async {
-    //         let msg = message.unwrap();
-    //         let data = msg.clone().into_data();
-    //         tokio::io::stdout().write_all(&data).await.unwrap();
-
-    //         let locked_state = state.lock().unwrap();
-
-    //         let the_listeners = locked_state.iter().map(|(_, ws_sink)| ws_sink);
-    //         for recp in the_listeners {
-    //             println!("sending to listerner");
-    //             let ms = from_tungstenite(msg.clone()).unwrap();
-    //             recp.unbounded_send(ms).unwrap();
-    //         }
-    //     })
-    // };
-
-    // pin_mut!(stdin_to_ws, ws_to_stdout);
-    // pin_mut!(stdin_to_ws);
 
     let ws_to_stdout = tokio::spawn(process_messages(read, state.clone()));
 
-    let test_separate_process = tokio::spawn(subscribe_to_market_data("ws://internal-prod-cbag-726087086.ap-northeast-1.elb.amazonaws.com:8080/ws/bookstats/BTC-USDT.PERP?markets=BINANCE,BINANCEFUTURES,DYDX,COINBASE&depth_limit=10&iterval_ms=1000", state.clone()));
+
+    {
+       match connection_state.try_read() {
+            Ok(n) => println!("GOT the read lock"),
+            Err(_) => println!("NOT GOT the read lock"),
+        };
+    }
+
+
+    subscribe_to_market_data("/ws/bookstats/BTC-USDT.PERP", Arc::clone(&connection_state));
 
     // let stdin_to_ws_task = tokio::spawn(async {
     //     pin_mut!(stdin_to_ws);
@@ -192,7 +261,17 @@ async fn main() {
 
     // axum stuff only
     // initialize tracing
-    tracing_subscriber::fmt::init();
+    // tracing_subscriber::fmt::init();
+
+    // Configure the tracing subscriber
+    let filter = EnvFilter::from_default_env()
+        .add_directive(tracing::Level::INFO.into());
+
+    tracing_subscriber::fmt::Subscriber::builder()
+        .with_env_filter(filter)
+        .init();
+
+
 
     // build our application with a route
     let app = Router::new()
@@ -201,12 +280,14 @@ async fn main() {
         // `POST /users` goes to `create_user`
         // .route("/users", post(create_user));
         .route("/ws", get(axum_ws_handler))
-        .with_state(state.clone());
+        .route("/ws/:subscription", get(axum_ws_handler))
+        .route("/ws/bookstats/:subscription", get(axum_ws_handler))
+        .with_state(connection_state.clone())
     // logging so we can see whats going on
-    // .layer(
-    //     TraceLayer::new_for_http()
-    //         .make_span_with(DefaultMakeSpan::default().include_headers(true)),
-    // );
+    .layer(
+        TraceLayer::new_for_http()
+            .make_span_with(DefaultMakeSpan::default().include_headers(true))
+    );
 
     // run our app with hyper, listening globally on port 3000
     // let listener = tokio::net::TcpListener::bind("0.0.0.0:9089").await.unwrap();
@@ -214,6 +295,7 @@ async fn main() {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 9089));
     tracing::debug!("listening on {}", addr);
+    println!("starting websocket server");
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
@@ -223,7 +305,7 @@ async fn main() {
 
     // // Set up a server to listen for websocket connections
     // let addr = env::args().nth(1).unwrap_or_else(|| "127.0.0.1:9080".to_string());
-    // // let state = PeerMap::new(Mutex::new(HashMap::new()));
+    // // let state = WSClientMap::new(Mutex::new(HashMap::new()));
     // // Create the event loop and TCP listener we'll accept connections on.
     // let try_socket = TcpListener::bind(&addr).await;
     // let listener = try_socket.expect("Failed to bind");
@@ -239,48 +321,85 @@ async fn main() {
     // ws_to_stdout.await.unwrap();
 }
 
+
 #[axum_macros::debug_handler]
 async fn axum_ws_handler(
+    Path(subscription): Path<String>,
+    // Query(params): Query<HashMap<String, String>>,
+    OriginalUri(original_uri): OriginalUri,
     ws: WebSocketUpgrade,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    State(state): State<PeerMap>,
+    State(state): State<ConnectionState>,
 ) -> impl IntoResponse {
     let user_agent = if let Some(TypedHeader(user_agent)) = user_agent {
         user_agent.to_string()
     } else {
         String::from("Unknown browser")
     };
-    println!("`{user_agent}` at {addr} connected.");
+    println!("`{user_agent}` at {addr} connected. requesting subscription: {subscription}");
+    // println!("OriginalUri {original_uri}");
     // finalize the upgrade process by returning upgrade callback.
     // we can customize the callback by sending additional info such as address.
-    ws.on_upgrade(move |socket| axum_handle_socket(socket, addr, state))
+    ws.on_upgrade(move |socket| axum_handle_socket(socket, addr, original_uri, state))
 }
 
 // basic handler that responds with a static string
 async fn root() -> &'static str {
-    "Hello, World!"
+    "Proxy is running"
 }
 
 /// Actual websocket statemachine (one will be spawned per connection)
 // #[axum_macros::debug_handler]
-async fn axum_handle_socket(mut websocket: WebSocket, who: SocketAddr, peer_map: PeerMap) {
+async fn axum_handle_socket(mut websocket: WebSocket, client_address: SocketAddr, request_endpoint: Uri, connection_state: ConnectionState) {
     // added by karun
     let (tx, rx): (
         UnboundedSender<axum_Message>,
         UnboundedReceiver<axum_Message>,
     ) = unbounded();
     // let (tx, rx) = unbounded();
-    peer_map.lock().unwrap().insert(who, tx);
+
+    let request_endpoint_str = request_endpoint.to_string();
     let (outgoing, incoming) = websocket.split();
+
+    // add the client to the connection state. If the url isn't already subscribed
+    // to, we need to spawn a process to subscribe to the url. This has to be done
+    // whilst there is a write lock on the connection state in case multiple
+    // clients requesting the same url connect at the same time to avoid
+    // race conditions
+    {
+        let mut connection_state_locked = connection_state.write().unwrap();
+        // check if the endpoint is already subscribed to, if not
+        // start a process to subscribe to the endpoint
+        let already_subscribed: bool;
+        if !connection_state_locked.contains_key(&request_endpoint_str){
+            connection_state_locked.insert(request_endpoint_str.clone(), HashMap::new());
+            already_subscribed = false;
+        } else {
+            already_subscribed = true;
+        }
+        // Access the inner HashMap and add a value to it
+        if let Some(ws_endpoint_clients) = connection_state_locked.get_mut(&request_endpoint_str) {
+            ws_endpoint_clients.insert(client_address, tx);
+        } else {
+            panic!("Expected key in connection state not found")
+        }
+        if !already_subscribed{
+            let _handle = subscribe_to_market_data(&request_endpoint_str, Arc::clone(&connection_state));
+            println!("Got the handle, all done!");
+        }
+    }
+
+
+
+    // let peers = peer_map.lock().unwrap();
 
     let broadcast_incoming = incoming.try_for_each(|msg| {
         println!(
             "Received a message from {}: {}",
-            who,
+            client_address,
             msg.to_text().unwrap()
         );
-        let peers = peer_map.lock().unwrap();
 
         // We want to broadcast the message to everyone except ourselves.
         // let broadcast_recipients =
@@ -307,163 +426,21 @@ async fn axum_handle_socket(mut websocket: WebSocket, who: SocketAddr, peer_map:
     pin_mut!(broadcast_incoming, receive_from_others);
     future::select(broadcast_incoming, receive_from_others).await;
 
-    println!("{} disconnected", &who);
-    peer_map.lock().unwrap().remove(&who);
+    println!("{} disconnected", &client_address);
 
-    // end of added by karun
+    // remove from the client from the connection state
+    {
+        let mut connection_state_locked = connection_state.write().unwrap();
+        if let Some(ws_endpoint_clients) = connection_state_locked.get_mut(&request_endpoint_str) {
+            ws_endpoint_clients.remove(&client_address);
+        } else {
+            panic!("Expected key in connection state not found")
+        }
 
-    //send a ping (unsupported by some browsers) just to kick things off and get a response
-    // if socket.send(Message::Ping(vec![1, 2, 3])).await.is_ok() {
-    //     println!("Pinged {}...", who);
-    // } else {
-    //     println!("Could not send ping {}!", who);
-    //     // no Error here since the only thing we can do is to close the connection.
-    //     // If we can not send messages, there is no way to salvage the statemachine anyway.
-    //     return;
-    // }
-
-    // // receive single message from a client (we can either receive or send with socket).
-    // // this will likely be the Pong for our Ping or a hello message from client.
-    // // waiting for message from a client will block this task, but will not block other client's
-    // // connections.
-    // if let Some(msg) = socket.recv().await {
-    //     if let Ok(msg) = msg {
-    //         if process_message(msg, who).is_break() {
-    //             return;
-    //         }
-    //     } else {
-    //         println!("client {who} abruptly disconnected");
-    //         return;
-    //     }
-    // }
-
-    // // Since each client gets individual statemachine, we can pause handling
-    // // when necessary to wait for some external event (in this case illustrated by sleeping).
-    // // Waiting for this client to finish getting its greetings does not prevent other clients from
-    // // connecting to server and receiving their greetings.
-    // for i in 1..5 {
-    //     if socket
-    //         .send(Message::Text(format!("Hi {i} times!")))
-    //         .await
-    //         .is_err()
-    //     {
-    //         println!("client {who} abruptly disconnected");
-    //         return;
-    //     }
-    //     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    // }
-
-    // // By splitting socket we can send and receive at the same time. In this example we will send
-    // // unsolicited messages to client based on some sort of server's internal event (i.e .timer).
-    // let (mut sender, mut receiver) = socket.split();
-
-    // // Spawn a task that will push several messages to the client (does not matter what client does)
-    // let mut send_task = tokio::spawn(async move {
-    //     let n_msg = 20;
-    //     for i in 0..n_msg {
-    //         // In case of any websocket error, we exit.
-    //         if sender
-    //             .send(Message::Text(format!("Server message {i} ...")))
-    //             .await
-    //             .is_err()
-    //         {
-    //             return i;
-    //         }
-
-    //         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-    //     }
-
-    //     println!("Sending close to {who}...");
-    //     if let Err(e) = sender
-    //         .send(Message::Close(Some(CloseFrame {
-    //             code: axum::extract::ws::close_code::NORMAL,
-    //             reason: Cow::from("Goodbye"),
-    //         })))
-    //         .await
-    //     {
-    //         println!("Could not send Close due to {}, probably it is ok?", e);
-    //     }
-    //     n_msg
-    // });
-
-    // // This second task will receive messages from client and print them on server console
-    // let mut recv_task = tokio::spawn(async move {
-    //     let mut cnt = 0;
-    //     while let Some(Ok(msg)) = receiver.next().await {
-    //         cnt += 1;
-    //         // print message and break if instructed to do so
-    //         if process_message(msg, who).is_break() {
-    //             break;
-    //         }
-    //     }
-    //     cnt
-    // });
-
-    // // If any one of the tasks exit, abort the other.
-    // tokio::select! {
-    //     rv_a = (&mut send_task) => {
-    //         match rv_a {
-    //             Ok(a) => println!("{} messages sent to {}", a, who),
-    //             Err(a) => println!("Error sending messages {:?}", a)
-    //         }
-    //         recv_task.abort();
-    //     },
-    //     rv_b = (&mut recv_task) => {
-    //         match rv_b {
-    //             Ok(b) => println!("Received {} messages", b),
-    //             Err(b) => println!("Error receiving messages {:?}", b)
-    //         }
-    //         send_task.abort();
-    //     }
-    // }
-
+    }
     // returning from the handler closes the websocket connection
-    println!("Websocket context {} destroyed", who);
+    println!("Websocket context {} destroyed", client_address);
 }
-
-// // tokio_tungstenite
-// async fn handle_connection(peer_map: PeerMap, raw_stream: TcpStream, addr: SocketAddr) {
-//     println!("Incoming TCP connection from: {}", addr);
-//     let ws_stream = tokio_tungstenite::accept_async(raw_stream)
-//         .await
-//         .expect("Error during the websocket handshake occurred");
-//     println!("WebSocket connection established: {}", addr);
-//     // Insert the write part of this peer to the peer map.
-//     let (tx, rx) = unbounded();
-//     peer_map.lock().unwrap().insert(addr, tx);
-
-//     let (mut outgoing, mut incoming) = ws_stream.split();
-
-//     let broadcast_incoming = incoming.try_for_each(|msg| {
-//         println!("Received a message from {}: {}", addr, msg.to_text().unwrap());
-//         let peers = peer_map.lock().unwrap();
-
-//         // We want to broadcast the message to everyone except ourselves.
-//         // let broadcast_recipients =
-//         //     peers.iter().filter(|(peer_addr, _)| peer_addr != &&addr).map(|(_, ws_sink)| ws_sink);
-
-//         // for recp in broadcast_recipients {
-//         //     recp.unbounded_send(msg.clone()).unwrap();
-//         // }
-
-//         future::ok(())
-//     });
-
-//     let receive_from_others = rx.map(Ok).forward(outgoing);
-
-//     pin_mut!(broadcast_incoming, receive_from_others);
-//     future::select(broadcast_incoming, receive_from_others).await;
-
-//     println!("{} disconnected", &addr);
-//     peer_map.lock().unwrap().remove(&addr);
-// }
-
-// async fn listen_for_connections(listener: TcpListener, state: PeerMap){
-//     println!("listening for connections");
-//     while let Ok((stream, addr)) = listener.accept().await {
-//         tokio::spawn(handle_connection(state.clone(), stream, addr));
-//     }
-// }
 
 // Our helper method which will read data from stdin and send it along the
 // sender provided.
