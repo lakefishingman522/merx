@@ -1,20 +1,18 @@
 use std::{
     collections::HashMap,
     net::SocketAddr,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
 };
 
 use futures_util::{
     future, pin_mut,
-    stream::{SplitStream, TryStreamExt},
+    stream::TryStreamExt,
     StreamExt,
 };
-use tokio::net::TcpStream;
+use tokio::task::JoinHandle;
 use tokio::time::{timeout, Duration};
-use tokio::{io::AsyncReadExt, task::JoinHandle};
 
-use tokio_tungstenite::MaybeTlsStream;
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message, WebSocketStream};
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 
@@ -37,8 +35,6 @@ use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing_subscriber::EnvFilter;
 
 type Tx = UnboundedSender<axum::extract::ws::Message>;
-type WSClientMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
-
 type ConnectionState = Arc<RwLock<HashMap<String, HashMap<SocketAddr, Tx>>>>;
 
 // helper function for conversions from tungstenite message to axum message
@@ -92,21 +88,14 @@ fn subscribe_to_market_data(
             }
         };
 
-        // let (ws_stream, _) = result.unwrap();
-
-        // let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
         println!("WebSocket handshake has been successfully completed");
-        let (write, mut read) = ws_stream.split();
-        // let message = read.next().await else {
-        //     println!("issue on stream");
-        // }
+        let (_write, mut read) = ws_stream.split();
         loop {
-            // read.for_each(|message| async {
             let message = read.next().await;
             let msg = message.unwrap();
             match msg {
                 Ok(message_text) => {
-                    let data = message_text.clone().into_data();
+                    // let data = message_text.clone().into_data();
                     // let data = msg.clone().into_data();
                     // tokio::io::stdout().write_all(&data).await.unwrap();
 
@@ -114,18 +103,7 @@ fn subscribe_to_market_data(
                     // this is a read lock only
                     {
                         let locked_state = connection_state.read().unwrap();
-
-                        // let the_listeners = locked_state.get("hello").iter().map(|(_, ws_sink)| ws_sink);
-                        // let the_listeners = locked_state.get("hello").and_then(iter().map(|(ws_sink, _)| ws_sink));
-                        // let the_listeners = locked_state.get("hello").unwrap_or_default().iter().map(|(_, ws_sink)| ws_sink);
-
-                        // let the_listeners = locked_state
-                        //     .get("hello")
-                        //     .and_then(|ws_sink| Some(ws_sink.iter().map(|(_, ws_sink)| ws_sink)))
-                        //     .unwrap_or_else(|| std::iter::empty());
-                        // println!("received data from {}\n", url_string);
                         let listener_hash_map = locked_state.get(&ws_endpoint);
-
                         let active_listeners = match listener_hash_map {
                             Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
                             None => {
@@ -144,7 +122,7 @@ fn subscribe_to_market_data(
                             let ms = from_tungstenite(message_text.clone()).unwrap();
                             match recp.unbounded_send(ms) {
                                 Ok(_) => (),
-                                Err(try_send_error) => {
+                                Err(_try_send_error) => {
                                     println!("Sending error");
                                 }
                             }
@@ -170,107 +148,25 @@ fn subscribe_to_market_data(
                         }
                     }
                 }
-                Err(err) => {}
+                Err(err) => {
+                    println!(
+                        "Error parsing message on subscription {} Error {}",
+                        &ws_endpoint, err
+                    )
+                }
             }
-            // // let data = msg.clone().into_data();
-            // // tokio::io::stdout().write_all(&data).await.unwrap();
-
-            // // this is a read lock only
-            // let locked_state = connection_state.read().unwrap();
-
-            // // let the_listeners = locked_state.get("hello").iter().map(|(_, ws_sink)| ws_sink);
-            // // let the_listeners = locked_state.get("hello").and_then(iter().map(|(ws_sink, _)| ws_sink));
-            // // let the_listeners = locked_state.get("hello").unwrap_or_default().iter().map(|(_, ws_sink)| ws_sink);
-
-            // // let the_listeners = locked_state
-            // //     .get("hello")
-            // //     .and_then(|ws_sink| Some(ws_sink.iter().map(|(_, ws_sink)| ws_sink)))
-            // //     .unwrap_or_else(|| std::iter::empty());
-            // // println!("received data from {}\n", url_string);
-            // let listener_hash_map = locked_state.get(url_string);
-            // let active_listeners = match listener_hash_map {
-            //     Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
-            //     None => {
-            //         // println!("subsciption no longer required");
-            //         return
-            //         //todo quite this stream, no longer require
-            //     }
-            // };
-
-            // for recp in active_listeners {
-            //     println!("sending to listerner");
-            //     let ms = from_tungstenite(msg.clone()).unwrap();
-            //     recp.unbounded_send(ms).unwrap();
-            // }
-            // })
-            // .await;
         }
         println!("Subscription task for {} exiting", ws_endpoint);
     })
 }
 
-//testing lifetimes
-async fn process_messages(
-    read: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
-    peer_map: WSClientMap,
-) {
-    read.for_each(|message| async {
-        let msg = message.unwrap();
-        let data = msg.clone().into_data();
-        // tokio::io::stdout().write_all(&data).await.unwrap();
-
-        let locked_state = peer_map.lock().unwrap();
-
-        let the_listeners = locked_state.iter().map(|(_, ws_sink)| ws_sink);
-        for recp in the_listeners {
-            println!("sending to listener");
-            let ms = from_tungstenite(msg.clone()).unwrap();
-            recp.unbounded_send(ms).unwrap();
-        }
-    })
-    .await;
-}
 
 #[tokio::main]
 async fn main() {
-    // to hold all the ws connections
-    println!("Running main..");
-    let state = WSClientMap::new(Mutex::new(HashMap::new()));
-    // let connection_state = ConnectionState::new(RwLock::new(HashMap::new()));
+    println!("Running Proxy");
+    // connection state which will hold a state of all subscriptions
+    // and their respective clients
     let connection_state = ConnectionState::new(RwLock::new(HashMap::new()));
-
-    // let connect_addr =
-    //     env::args().nth(1).unwrap_or_else(|| panic!("this program requires at least one argument"));
-    // let url = url::Url::parse(&connect_addr).unwrap();
-
-    let url = url::Url::parse("ws://internal-prod-cbag-726087086.ap-northeast-1.elb.amazonaws.com:8080/ws/bookstats/BTC-USDT.PERP?markets=BINANCE,BINANCEFUTURES,DYDX,COINBASE&depth_limit=10&iterval_ms=1000").unwrap();
-
-    let (stdin_tx, stdin_rx) = futures_channel::mpsc::unbounded();
-    tokio::spawn(read_stdin(stdin_tx));
-
-    let (ws_stream, _) = connect_async(url).await.expect("Failed to connect");
-    println!("WebSocket handshake has been successfully completed");
-
-    let (write, read) = ws_stream.split();
-
-    let stdin_to_ws = stdin_rx.map(Ok).forward(write);
-
-    let ws_to_stdout = tokio::spawn(process_messages(read, state.clone()));
-
-    // let stdin_to_ws_task = tokio::spawn(async {
-    //     pin_mut!(stdin_to_ws);
-    //     stdin_to_ws.await
-    // });
-    // let ws_to_stdout_task = tokio::spawn(async {
-    //     pin_mut!(ws_to_stdout);
-    //     ws_to_stdout.await
-    // });
-
-    // pin_mut!(stdin_to_ws_task), ws_to_stdout);
-
-    // axum stuff only
-    // initialize tracing
-    // tracing_subscriber::fmt::init();
 
     // Configure the tracing subscriber
     let filter = EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into());
@@ -312,34 +208,7 @@ async fn main() {
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
         .unwrap();
-
-    // end of axum stuff
-
-    // // Set up a server to listen for websocket connections
-    // let addr = env::args().nth(1).unwrap_or_else(|| "127.0.0.1:9080".to_string());
-    // // let state = WSClientMap::new(Mutex::new(HashMap::new()));
-    // // Create the event loop and TCP listener we'll accept connections on.
-    // let try_socket = TcpListener::bind(&addr).await;
-    // let listener = try_socket.expect("Failed to bind");
-    // println!("Listening on: {}", addr);
-
-    // // listen_for_connections(listener, state).await;
-    // tokio::spawn(listen_for_connections(listener, state.clone()));
-
-    // future::select(stdin_to_ws, ws_to_stdout).await;
-    pin_mut!(stdin_to_ws, ws_to_stdout);
-    future::select(stdin_to_ws, ws_to_stdout).await;
-
-    // ws_to_stdout.await.unwrap();
 }
-
-// fn reqwest_response_to_axum_response(response: ReqwestResponse) -> Response<Vec<u8>> {
-//     // Extract the response parts from `reqwest` response
-//     let (parts, body) = response.into_parts();
-
-//     // Create an Axum response using the response parts and body
-//     Response::from_parts(parts, body)
-// }
 
 async fn forward_request(OriginalUri(original_uri): OriginalUri) -> impl IntoResponse {
     let server_url = "http://internal-prod-cbag-726087086.ap-northeast-1.elb.amazonaws.com:8080";
@@ -353,13 +222,10 @@ async fn forward_request(OriginalUri(original_uri): OriginalUri) -> impl IntoRes
         Ok(response) => {
             // Extract the status code
             let status = StatusCode::from_u16(response.status().as_u16()).unwrap();
-
             // Extract the headers
             let headers = response.headers().clone();
-
             // Extract the body as bytes
             let body_bytes = response.bytes().await.unwrap();
-
             // Create an Axum response using the extracted parts
             let mut axum_response = Response::new(Body::from(body_bytes));
             *axum_response.status_mut() = status;
@@ -367,7 +233,7 @@ async fn forward_request(OriginalUri(original_uri): OriginalUri) -> impl IntoRes
 
             axum_response
         }
-        Err(err) => {
+        Err(_err) => {
             // Build a 404 response with a body of type `axum::http::response::Body`
             let response = Response::builder()
                 .status(StatusCode::NOT_FOUND)
@@ -378,71 +244,9 @@ async fn forward_request(OriginalUri(original_uri): OriginalUri) -> impl IntoRes
     }
 }
 
-// async fn forward_request(Query(query_params): Query<HashMap<String, String>>,
-// OriginalUri(original_uri): OriginalUri,
-// // ) -> Json<Result<String, String>> {
-// ) -> Response<axum::body::Bytes> {
-//     // Construct the target URL with query string parameters
-//     // let target_url = "https://target-server.com/api/endpoint"; // URL of the target server
-//     // let target_uri = Uri::from_maybe_shared(format!("{}?{}", target_url, serde_urlencoded::to_string(&query_params).unwrap()))
-//     //     .expect("Invalid target URI");
-
-//     let server_url = "http://internal-prod-cbag-726087086.ap-northeast-1.elb.amazonaws.com:8080";
-//     // let target_uri = Uri::from_maybe_shared(format!("{}{}", &server_url, original_uri)).expect("Invalid target Uri");
-//     let target_uri = Url::parse(&format!("{}{}", &server_url, original_uri)).unwrap();
-
-//     // Make a GET request to the target server
-//     let client = Client::new();
-//     let target_res = client.get(target_uri).send().await;
-
-//     match target_res {
-//         Ok(response) => {
-//             // Response::new(response.bytes().await.unwrap())
-
-//             let status = StatusCode::from_u16(response.status().as_u16()).unwrap();
-
-//             // Extract the headers
-//             let headers: HeaderMap = response.headers().clone();
-
-//             // Extract the body as bytes
-//             let body_bytes = response.bytes().await.unwrap();
-
-//             // Create an Axum response using the extracted parts
-//             let mut axum_response = Response::new(body_bytes);
-//             *axum_response.status_mut() = status;
-//             axum_response.headers_mut().extend(headers);
-//             axum_response
-//         }
-//         Err(err) => {
-//     // Build a 404 response with a body of type `axum::http::response::Body`
-//             let response = Response::builder()
-//                 .status(StatusCode::NOT_FOUND)
-//                 .body(axum::body::Bytes::from("Not Found"))
-//                 .unwrap();
-//             response
-//             // Handle request error
-//             // Json(Err(format!("Error: {}", err)))
-//             // Response::new("error".as_bytes())
-//             // Response::new("hello")
-//             // Response::<axum::body::Bytes>::new(format!("Error: {}", err))
-//         }
-//     }
-// }
-
-// #[axum_macros::debug_handler]
-// async fn axum_rest_handler(
-//     Path(subscription): Path<String>,
-//     // Query(params): Query<HashMap<String, String>>,
-//     OriginalUri(original_uri): OriginalUri,
-//     user_agent: Option<TypedHeader<headers::UserAgent>>,
-//     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-// ){
-
-// }
-
 #[axum_macros::debug_handler]
 async fn axum_ws_handler(
-    Path(symbol): Path<String>,
+    Path(_symbol): Path<String>,
     // Query(params): Query<HashMap<String, String>>,
     OriginalUri(original_uri): OriginalUri,
     ws: WebSocketUpgrade,
@@ -456,13 +260,10 @@ async fn axum_ws_handler(
         String::from("Unknown browser")
     };
     println!("`{user_agent}` at {addr} connected. requesting subscription: {original_uri}");
-    // println!("OriginalUri {original_uri}");
-    // finalize the upgrade process by returning upgrade callback.
-    // we can customize the callback by sending additional info such as address.
+    // we can customize the callback by sending additional info such as original_uri.
     ws.on_upgrade(move |socket| axum_handle_socket(socket, addr, original_uri, state))
 }
 
-// basic handler that responds with a static string
 async fn root() -> &'static str {
     "Proxy is running"
 }
@@ -470,7 +271,7 @@ async fn root() -> &'static str {
 /// Actual websocket statemachine (one will be spawned per connection)
 // #[axum_macros::debug_handler]
 async fn axum_handle_socket(
-    mut websocket: WebSocket,
+    websocket: WebSocket,
     client_address: SocketAddr,
     request_endpoint: Uri,
     connection_state: ConnectionState,
@@ -514,36 +315,17 @@ async fn axum_handle_socket(
         }
     }
 
-    // let peers = peer_map.lock().unwrap();
-
+    // this is unused but good to log incase there are incoming messages
     let broadcast_incoming = incoming.try_for_each(|msg| {
         println!(
             "Received a message from {}: {}",
             client_address,
             msg.to_text().unwrap()
         );
-
-        // We want to broadcast the message to everyone except ourselves.
-        // let broadcast_recipients =
-        //     peers.iter().filter(|(peer_addr, _)| peer_addr != &&addr).map(|(_, ws_sink)| ws_sink);
-
-        // for recp in broadcast_recipients {
-        //     recp.unbounded_send(msg.clone()).unwrap();
-        // }
-
         future::ok(())
     });
 
     let receive_from_others = rx.map(Ok).forward(outgoing);
-
-    // let receive_from_others = rx
-    //     .map(Ok)
-    //     .forward(outgoing.into())
-    //     .map(|result| {
-    //         if let Err(e) = result {
-    //             eprintln!("Error: {:?}", e);
-    //         }
-    //     });
 
     pin_mut!(broadcast_incoming, receive_from_others);
     future::select(broadcast_incoming, receive_from_others).await;
@@ -562,19 +344,4 @@ async fn axum_handle_socket(
     }
     // returning from the handler closes the websocket connection
     println!("Websocket context {} destroyed", client_address);
-}
-
-// Our helper method which will read data from stdin and send it along the
-// sender provided.
-async fn read_stdin(tx: futures_channel::mpsc::UnboundedSender<Message>) {
-    let mut stdin = tokio::io::stdin();
-    loop {
-        let mut buf = vec![0; 1024];
-        let n = match stdin.read(&mut buf).await {
-            Err(_) | Ok(0) => break,
-            Ok(n) => n,
-        };
-        buf.truncate(n);
-        tx.unbounded_send(Message::binary(buf)).unwrap();
-    }
 }
