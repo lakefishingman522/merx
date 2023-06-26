@@ -175,18 +175,16 @@ fn subscribe_to_market_data(
                         // client_subscriptions = connection_state_lock.
                         let listener_hash_map = locked_state.get(&ws_endpoint);
                         let active_listeners = match listener_hash_map {
-                            Some(listeners) => {
-                                listeners
-                            },
+                            Some(listeners) => listeners,
                             None => {
                                 println!("subsciption no longer required");
                                 return;
                             }
                         };
-                        if active_listeners.len() == 0{
+                        if active_listeners.len() == 0 {
                             println!("Removing subscription {} from subscriptions", &ws_endpoint);
                             locked_state.remove(&ws_endpoint);
-                            break
+                            break;
                         }
                     }
                 }
