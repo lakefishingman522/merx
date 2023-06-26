@@ -28,7 +28,7 @@ use reqwest::Client;
 use axum::extract::connect_info::ConnectInfo;
 use axum::extract::ws::CloseFrame;
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 // use env_logger::Builder;
