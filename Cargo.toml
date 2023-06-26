@@ -25,5 +25,6 @@ axum-macros = "0.3.7"
 reqwest = "0.11.18"
 log = "0.4.19"
 env_logger = "0.10.0"
+argh = "0.1.10"
 
 
