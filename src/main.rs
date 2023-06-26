@@ -91,7 +91,6 @@ async fn main() {
         .fallback(fallback)
         .with_state(connection_state.clone())
         .layer(Extension(cbag_uri_clone))
-        // .with_state(cbag_uri_clone)
         // logging so we can see whats going on
         .layer(
             TraceLayer::new_for_http()
@@ -146,7 +145,7 @@ fn subscribe_to_market_data(
             Ok(response) => response,
             Err(err) => {
                 // Error occurred or connection timed out
-                info!("Timeout Error: {:?}", err);
+                error!("Timeout Error: {:?}", err);
                 return ();
             }
         };
