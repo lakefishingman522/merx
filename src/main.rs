@@ -27,6 +27,7 @@ use axum::{
 use argh::FromArgs;
 use axum::extract::connect_info::ConnectInfo;
 use axum::extract::ws::CloseFrame;
+use axum::extract::Extension;
 use reqwest::Client;
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing::{error, info, warn};
@@ -47,13 +48,6 @@ struct Args {
     port: u16,
 }
 
-fn add_http_prefix(uri: &str) -> String {
-    if !uri.starts_with("http://") && !uri.starts_with("https://") {
-        return format!("http://{}", uri);
-    }
-    String::from(uri)
-}
-
 #[tokio::main]
 async fn main() {
     // Configure the tracing subscriber
@@ -67,7 +61,7 @@ async fn main() {
     if args.cbag_uri == "none" {
         panic!("cbag-uri is required")
     }
-    let cbag_uri = add_http_prefix(&args.cbag_uri);
+    let cbag_uri = args.cbag_uri.clone();
     let port = args.port;
 
     info!("Running Market Data Proxy");
@@ -77,6 +71,7 @@ async fn main() {
     // connection state which will hold a state of all subscriptions
     // and their respective clients
     let connection_state = ConnectionState::new(RwLock::new(HashMap::new()));
+    let cbag_uri_clone = cbag_uri.clone();
 
     // build our application with a route
     let app = Router::new()
@@ -95,6 +90,8 @@ async fn main() {
         .route("/ws/cost-calculator/:symbol", get(axum_ws_handler))
         .fallback(fallback)
         .with_state(connection_state.clone())
+        .layer(Extension(cbag_uri_clone))
+        // .with_state(cbag_uri_clone)
         // logging so we can see whats going on
         .layer(
             TraceLayer::new_for_http()
@@ -134,14 +131,12 @@ fn from_tungstenite(message: Message) -> Option<axum::extract::ws::Message> {
 fn subscribe_to_market_data(
     ws_endpoint: &str,
     connection_state: ConnectionState,
+    cbag_uri: String,
 ) -> JoinHandle<()> {
     info!("Starting a new subscription to {}", ws_endpoint);
     //TODO: add this as a parameter
     let ws_endpoint = ws_endpoint.to_owned();
-    let full_url = format!(
-        "{}{}",
-        "ws://internal-prod-cbag-726087086.ap-northeast-1.elb.amazonaws.com:8080", ws_endpoint
-    );
+    let full_url = format!("ws://{}{}", cbag_uri, ws_endpoint);
 
     tokio::spawn(async move {
         info!("running subscribe to market data");
@@ -246,10 +241,12 @@ async fn fallback(uri: Uri, OriginalUri(original_uri): OriginalUri) -> (StatusCo
     (StatusCode::NOT_FOUND, format!("No route for {}", uri))
 }
 
-async fn forward_request(OriginalUri(original_uri): OriginalUri) -> impl IntoResponse {
+async fn forward_request(
+    OriginalUri(original_uri): OriginalUri,
+    Extension(cbag_uri): Extension<String>,
+) -> impl IntoResponse {
     info!("Received REST Forward Request {}", original_uri);
-    let server_url = "http://internal-prod-cbag-726087086.ap-northeast-1.elb.amazonaws.com:8080";
-    let target_url = format!("{}{}", server_url, original_uri);
+    let target_url = format!("http://{}{}", cbag_uri, original_uri);
 
     // Make a GET request to the target server
     let client = Client::new();
@@ -290,6 +287,7 @@ async fn axum_ws_handler(
     user_agent: Option<TypedHeader<headers::UserAgent>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<ConnectionState>,
+    Extension(cbag_uri): Extension<String>,
 ) -> impl IntoResponse {
     let user_agent = if let Some(TypedHeader(user_agent)) = user_agent {
         user_agent.to_string()
@@ -298,7 +296,7 @@ async fn axum_ws_handler(
     };
     info!("{addr} connected User-Agent {user_agent}. Requesting subscription: {original_uri}");
     // we can customize the callback by sending additional info such as original_uri.
-    ws.on_upgrade(move |socket| axum_handle_socket(socket, addr, original_uri, state))
+    ws.on_upgrade(move |socket| axum_handle_socket(socket, addr, original_uri, state, cbag_uri))
 }
 
 async fn root() -> &'static str {
@@ -312,6 +310,7 @@ async fn axum_handle_socket(
     client_address: SocketAddr,
     request_endpoint: Uri,
     connection_state: ConnectionState,
+    cbag_uri: String,
 ) {
     // added by karun
     let (tx, rx): (
@@ -342,13 +341,19 @@ async fn axum_handle_socket(
         // Access the inner HashMap and add a value to it
         if let Some(ws_endpoint_clients) = connection_state_locked.get_mut(&request_endpoint_str) {
             ws_endpoint_clients.insert(client_address, tx);
+            println!(
+                "Subscription {} already exists, adding client to subscription",
+                &request_endpoint_str
+            )
         } else {
             panic!("Expected key in connection state not found")
         }
         if !already_subscribed {
-            let _handle =
-                subscribe_to_market_data(&request_endpoint_str, Arc::clone(&connection_state));
-            info!("Got the handle, all done!");
+            let _handle = subscribe_to_market_data(
+                &request_endpoint_str,
+                Arc::clone(&connection_state),
+                cbag_uri,
+            );
         }
     }
 
