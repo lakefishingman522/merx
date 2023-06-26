@@ -1,8 +1,5 @@
-use core::num;
 use std::{
     collections::HashMap,
-    env,
-    io::Error as IoError,
     net::SocketAddr,
     sync::{Arc, Mutex, RwLock},
 };
@@ -12,47 +9,32 @@ use futures_util::{
     stream::{SplitStream, TryStreamExt},
     StreamExt,
 };
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpStream;
 use tokio::time::{timeout, Duration};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    task::JoinHandle,
-};
+use tokio::{io::AsyncReadExt, task::JoinHandle};
 
+use tokio_tungstenite::MaybeTlsStream;
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message, WebSocketStream};
-use tokio_tungstenite::{
-    tungstenite::{client, connect},
-    MaybeTlsStream,
-};
 
 use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 
 // for axum
-use axum::{
-    extract::ws::{rejection::ConnectionNotUpgradable, Message as axum_Message},
-    http::Uri,
-};
+use axum::{body::Body, extract::ws::Message as axum_Message, http::Uri};
 use axum::{
     extract::ws::{WebSocket, WebSocketUpgrade},
-    extract::{self, OriginalUri, Path, Query, State},
-    http::StatusCode,
+    extract::{OriginalUri, Path, State},
+    http::{Response, StatusCode},
     response::IntoResponse,
-    routing::{get, post},
-    Json, Router, Server, TypedHeader,
+    routing::get,
+    Router, TypedHeader,
 };
+use reqwest::Client;
 
 //allows to extract the IP of connecting user
 use axum::extract::connect_info::ConnectInfo;
 use axum::extract::ws::CloseFrame;
-use tower_http::{
-    services::ServeDir,
-    trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer},
-};
-use tracing::Level;
-use tracing_subscriber::{fmt::Subscriber, EnvFilter};
-
-// use axum_extra::TypedHeader;
-use serde::{Deserialize, Serialize};
+use tower_http::trace::{DefaultMakeSpan, TraceLayer};
+use tracing_subscriber::EnvFilter;
 
 type Tx = UnboundedSender<axum::extract::ws::Message>;
 type WSClientMap = Arc<Mutex<HashMap<SocketAddr, Tx>>>;
@@ -275,15 +257,6 @@ async fn main() {
 
     let ws_to_stdout = tokio::spawn(process_messages(read, state.clone()));
 
-    {
-        match connection_state.try_read() {
-            Ok(n) => println!("GOT the read lock"),
-            Err(_) => println!("NOT GOT the read lock"),
-        };
-    }
-
-    subscribe_to_market_data("/ws/bookstats/BTC-USDT.PERP", Arc::clone(&connection_state));
-
     // let stdin_to_ws_task = tokio::spawn(async {
     //     pin_mut!(stdin_to_ws);
     //     stdin_to_ws.await
@@ -310,11 +283,17 @@ async fn main() {
     let app = Router::new()
         // `GET /` goes to `root`
         .route("/", get(root))
-        // `POST /users` goes to `create_user`
-        // .route("/users", post(create_user));
-        .route("/ws", get(axum_ws_handler))
-        .route("/ws/:subscription", get(axum_ws_handler))
-        .route("/ws/bookstats/:subscription", get(axum_ws_handler))
+        // REST endpoints
+        .route("/version", get(forward_request))
+        .route("/book/:symbol", get(forward_request))
+        .route("/properties/:symbol", get(forward_request))
+        .route("/legacy-cbbo/:symbol", get(forward_request))
+        .route("/cost-calculator/:symbol", get(forward_request))
+        // WS Endpoints
+        .route("/ws/snapshot/:subscription", get(axum_ws_handler))
+        .route("/ws/bookstats/:symbol", get(axum_ws_handler))
+        .route("/ws/legacy-cbbo/:symbol", get(axum_ws_handler))
+        .route("/ws/cost-calculator/:symbol", get(axum_ws_handler))
         .with_state(connection_state.clone())
         // logging so we can see whats going on
         .layer(
@@ -354,9 +333,116 @@ async fn main() {
     // ws_to_stdout.await.unwrap();
 }
 
+// fn reqwest_response_to_axum_response(response: ReqwestResponse) -> Response<Vec<u8>> {
+//     // Extract the response parts from `reqwest` response
+//     let (parts, body) = response.into_parts();
+
+//     // Create an Axum response using the response parts and body
+//     Response::from_parts(parts, body)
+// }
+
+async fn forward_request(OriginalUri(original_uri): OriginalUri) -> impl IntoResponse {
+    let server_url = "http://internal-prod-cbag-726087086.ap-northeast-1.elb.amazonaws.com:8080";
+    let target_url = format!("{}{}", server_url, original_uri);
+
+    // Make a GET request to the target server
+    let client = Client::new();
+    let target_res = client.get(&target_url).send().await;
+
+    match target_res {
+        Ok(response) => {
+            // Extract the status code
+            let status = StatusCode::from_u16(response.status().as_u16()).unwrap();
+
+            // Extract the headers
+            let headers = response.headers().clone();
+
+            // Extract the body as bytes
+            let body_bytes = response.bytes().await.unwrap();
+
+            // Create an Axum response using the extracted parts
+            let mut axum_response = Response::new(Body::from(body_bytes));
+            *axum_response.status_mut() = status;
+            axum_response.headers_mut().extend(headers);
+
+            axum_response
+        }
+        Err(err) => {
+            // Build a 404 response with a body of type `axum::http::response::Body`
+            let response = Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::from("Not Found"))
+                .unwrap();
+            response
+        }
+    }
+}
+
+// async fn forward_request(Query(query_params): Query<HashMap<String, String>>,
+// OriginalUri(original_uri): OriginalUri,
+// // ) -> Json<Result<String, String>> {
+// ) -> Response<axum::body::Bytes> {
+//     // Construct the target URL with query string parameters
+//     // let target_url = "https://target-server.com/api/endpoint"; // URL of the target server
+//     // let target_uri = Uri::from_maybe_shared(format!("{}?{}", target_url, serde_urlencoded::to_string(&query_params).unwrap()))
+//     //     .expect("Invalid target URI");
+
+//     let server_url = "http://internal-prod-cbag-726087086.ap-northeast-1.elb.amazonaws.com:8080";
+//     // let target_uri = Uri::from_maybe_shared(format!("{}{}", &server_url, original_uri)).expect("Invalid target Uri");
+//     let target_uri = Url::parse(&format!("{}{}", &server_url, original_uri)).unwrap();
+
+//     // Make a GET request to the target server
+//     let client = Client::new();
+//     let target_res = client.get(target_uri).send().await;
+
+//     match target_res {
+//         Ok(response) => {
+//             // Response::new(response.bytes().await.unwrap())
+
+//             let status = StatusCode::from_u16(response.status().as_u16()).unwrap();
+
+//             // Extract the headers
+//             let headers: HeaderMap = response.headers().clone();
+
+//             // Extract the body as bytes
+//             let body_bytes = response.bytes().await.unwrap();
+
+//             // Create an Axum response using the extracted parts
+//             let mut axum_response = Response::new(body_bytes);
+//             *axum_response.status_mut() = status;
+//             axum_response.headers_mut().extend(headers);
+//             axum_response
+//         }
+//         Err(err) => {
+//     // Build a 404 response with a body of type `axum::http::response::Body`
+//             let response = Response::builder()
+//                 .status(StatusCode::NOT_FOUND)
+//                 .body(axum::body::Bytes::from("Not Found"))
+//                 .unwrap();
+//             response
+//             // Handle request error
+//             // Json(Err(format!("Error: {}", err)))
+//             // Response::new("error".as_bytes())
+//             // Response::new("hello")
+//             // Response::<axum::body::Bytes>::new(format!("Error: {}", err))
+//         }
+//     }
+// }
+
+// #[axum_macros::debug_handler]
+// async fn axum_rest_handler(
+//     Path(subscription): Path<String>,
+//     // Query(params): Query<HashMap<String, String>>,
+//     OriginalUri(original_uri): OriginalUri,
+//     user_agent: Option<TypedHeader<headers::UserAgent>>,
+//     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+// ){
+
+// }
+
 #[axum_macros::debug_handler]
 async fn axum_ws_handler(
-    Path(subscription): Path<String>,
+    Path(symbol): Path<String>,
     // Query(params): Query<HashMap<String, String>>,
     OriginalUri(original_uri): OriginalUri,
     ws: WebSocketUpgrade,
@@ -369,7 +455,7 @@ async fn axum_ws_handler(
     } else {
         String::from("Unknown browser")
     };
-    println!("`{user_agent}` at {addr} connected. requesting subscription: {subscription}");
+    println!("`{user_agent}` at {addr} connected. requesting subscription: {original_uri}");
     // println!("OriginalUri {original_uri}");
     // finalize the upgrade process by returning upgrade callback.
     // we can customize the callback by sending additional info such as address.
