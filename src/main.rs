@@ -1,3 +1,4 @@
+use core::num;
 use std::{
     collections::HashMap,
     env,
@@ -11,20 +12,29 @@ use futures_util::{
     stream::{SplitStream, TryStreamExt},
     StreamExt,
 };
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, task::JoinHandle};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{timeout, Duration};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    task::JoinHandle,
+};
 
-use tokio_tungstenite::{MaybeTlsStream, tungstenite::client};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message, WebSocketStream};
+use tokio_tungstenite::{
+    tungstenite::{client, connect},
+    MaybeTlsStream,
+};
 
 use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 
 // for axum
-use axum::{extract::ws::Message as axum_Message, http::Uri};
+use axum::{
+    extract::ws::{rejection::ConnectionNotUpgradable, Message as axum_Message},
+    http::Uri,
+};
 use axum::{
     extract::ws::{WebSocket, WebSocketUpgrade},
-    extract::{self, State, Path, Query, OriginalUri},
+    extract::{self, OriginalUri, Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -34,12 +44,12 @@ use axum::{
 //allows to extract the IP of connecting user
 use axum::extract::connect_info::ConnectInfo;
 use axum::extract::ws::CloseFrame;
-use tracing::Level;
-use tracing_subscriber::{EnvFilter, fmt::Subscriber};
 use tower_http::{
     services::ServeDir,
-    trace::{DefaultMakeSpan, TraceLayer, DefaultOnRequest, DefaultOnResponse},
+    trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer},
 };
+use tracing::Level;
+use tracing_subscriber::{fmt::Subscriber, EnvFilter};
 
 // use axum_extra::TypedHeader;
 use serde::{Deserialize, Serialize};
@@ -67,13 +77,17 @@ fn from_tungstenite(message: Message) -> Option<axum::extract::ws::Message> {
     }
 }
 
-fn subscribe_to_market_data(ws_endpoint: &str, connection_state: ConnectionState) -> JoinHandle<()> {
+fn subscribe_to_market_data(
+    ws_endpoint: &str,
+    connection_state: ConnectionState,
+) -> JoinHandle<()> {
     println!("Starting a new subscription to {}", ws_endpoint);
     //TODO: add this as a parameter
     let ws_endpoint = ws_endpoint.to_owned();
-    let full_url = format!("{}{}",
-        "ws://internal-prod-cbag-726087086.ap-northeast-1.elb.amazonaws.com:8080",
-        ws_endpoint);
+    let full_url = format!(
+        "{}{}",
+        "ws://internal-prod-cbag-726087086.ap-northeast-1.elb.amazonaws.com:8080", ws_endpoint
+    );
 
     tokio::spawn(async move {
         println!("running subscribe to market data");
@@ -84,17 +98,16 @@ fn subscribe_to_market_data(ws_endpoint: &str, connection_state: ConnectionState
             Err(err) => {
                 // Error occurred or connection timed out
                 println!("Timeout Error: {:?}", err);
-                return ()
-            },
+                return ();
+            }
         };
 
-        let (ws_stream, _) = match result
-        {
+        let (ws_stream, _) = match result {
             Ok(whatever) => whatever,
-            Err(err) =>{
+            Err(err) => {
                 println!("Connection Error: {:?}", err);
-                return ()
-            },
+                return ();
+            }
         };
 
         // let (ws_stream, _) = result.unwrap();
@@ -106,7 +119,7 @@ fn subscribe_to_market_data(ws_endpoint: &str, connection_state: ConnectionState
         //     println!("issue on stream");
         // }
         loop {
-        // read.for_each(|message| async {
+            // read.for_each(|message| async {
             let message = read.next().await;
             let msg = message.unwrap();
             match msg {
@@ -115,41 +128,69 @@ fn subscribe_to_market_data(ws_endpoint: &str, connection_state: ConnectionState
                     // let data = msg.clone().into_data();
                     // tokio::io::stdout().write_all(&data).await.unwrap();
 
+                    let number_of_active_listeners: usize;
                     // this is a read lock only
-                    let locked_state = connection_state.read().unwrap();
+                    {
+                        let locked_state = connection_state.read().unwrap();
 
+                        // let the_listeners = locked_state.get("hello").iter().map(|(_, ws_sink)| ws_sink);
+                        // let the_listeners = locked_state.get("hello").and_then(iter().map(|(ws_sink, _)| ws_sink));
+                        // let the_listeners = locked_state.get("hello").unwrap_or_default().iter().map(|(_, ws_sink)| ws_sink);
 
-                    // let the_listeners = locked_state.get("hello").iter().map(|(_, ws_sink)| ws_sink);
-                    // let the_listeners = locked_state.get("hello").and_then(iter().map(|(ws_sink, _)| ws_sink));
-                    // let the_listeners = locked_state.get("hello").unwrap_or_default().iter().map(|(_, ws_sink)| ws_sink);
+                        // let the_listeners = locked_state
+                        //     .get("hello")
+                        //     .and_then(|ws_sink| Some(ws_sink.iter().map(|(_, ws_sink)| ws_sink)))
+                        //     .unwrap_or_else(|| std::iter::empty());
+                        // println!("received data from {}\n", url_string);
+                        let listener_hash_map = locked_state.get(&ws_endpoint);
 
-                    // let the_listeners = locked_state
-                    //     .get("hello")
-                    //     .and_then(|ws_sink| Some(ws_sink.iter().map(|(_, ws_sink)| ws_sink)))
-                    //     .unwrap_or_else(|| std::iter::empty());
-                    // println!("received data from {}\n", url_string);
-                    let listener_hash_map = locked_state.get(&ws_endpoint);
-
-
-                    let active_listeners = match listener_hash_map {
-                        Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
-                        None => {
-                            println!("subsciption no longer required");
-                            return
-                            //todo quite this stream, no longer require
-                        }
-                    };
-
-                    for recp in active_listeners {
-                        println!("sending to listerner");
-                        let ms = from_tungstenite(message_text.clone()).unwrap();
-                        match recp.unbounded_send(ms) {
-                            Ok(_) => (),
-                            Err(try_send_error) => {println!("Sending error");}
+                        let active_listeners = match listener_hash_map {
+                            Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
+                            None => {
+                                println!("subsciption no longer required");
+                                return;
+                                //todo quite this stream, no longer require
+                            }
+                        };
+                        // when there are no more clients subscribed to this ws subscription,
+                        // we can close in a write lock to avoid race conditions agains
+                        // new clients subscriptions that might come in whilst the
+                        // subscription is being removed from the connection state
+                        number_of_active_listeners = active_listeners.len();
+                        for recp in active_listeners {
+                            println!("sending to listerner");
+                            let ms = from_tungstenite(message_text.clone()).unwrap();
+                            match recp.unbounded_send(ms) {
+                                Ok(_) => (),
+                                Err(try_send_error) => {
+                                    println!("Sending error");
+                                }
+                            }
                         }
                     }
-                },
-                Err(err) => {},
+                    println!("there are {}", number_of_active_listeners);
+                    if number_of_active_listeners == 0 {
+                        let mut locked_state = connection_state.write().unwrap();
+                        // check again there are no new clients for the subsctiption
+                        // client_subscriptions = connection_state_lock.
+                        let listener_hash_map = locked_state.get(&ws_endpoint);
+                        let active_listeners = match listener_hash_map {
+                            Some(listeners) => {
+                                listeners
+                            },
+                            None => {
+                                println!("subsciption no longer required");
+                                return;
+                            }
+                        };
+                        if active_listeners.len() == 0{
+                            println!("Removing subscription {} from subscriptions", &ws_endpoint);
+                            locked_state.remove(&ws_endpoint);
+                            break
+                        }
+                    }
+                }
+                Err(err) => {}
             }
             // // let data = msg.clone().into_data();
             // // tokio::io::stdout().write_all(&data).await.unwrap();
@@ -181,10 +222,10 @@ fn subscribe_to_market_data(ws_endpoint: &str, connection_state: ConnectionState
             //     let ms = from_tungstenite(msg.clone()).unwrap();
             //     recp.unbounded_send(ms).unwrap();
             // }
-        // })
-        // .await;
+            // })
+            // .await;
         }
-
+        println!("Subscription task for {} exiting", ws_endpoint);
     })
 }
 
@@ -202,7 +243,7 @@ async fn process_messages(
 
         let the_listeners = locked_state.iter().map(|(_, ws_sink)| ws_sink);
         for recp in the_listeners {
-            println!("sending to listerner");
+            println!("sending to listener");
             let ms = from_tungstenite(msg.clone()).unwrap();
             recp.unbounded_send(ms).unwrap();
         }
@@ -234,17 +275,14 @@ async fn main() {
 
     let stdin_to_ws = stdin_rx.map(Ok).forward(write);
 
-
     let ws_to_stdout = tokio::spawn(process_messages(read, state.clone()));
 
-
     {
-       match connection_state.try_read() {
+        match connection_state.try_read() {
             Ok(n) => println!("GOT the read lock"),
             Err(_) => println!("NOT GOT the read lock"),
         };
     }
-
 
     subscribe_to_market_data("/ws/bookstats/BTC-USDT.PERP", Arc::clone(&connection_state));
 
@@ -264,14 +302,11 @@ async fn main() {
     // tracing_subscriber::fmt::init();
 
     // Configure the tracing subscriber
-    let filter = EnvFilter::from_default_env()
-        .add_directive(tracing::Level::INFO.into());
+    let filter = EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into());
 
     tracing_subscriber::fmt::Subscriber::builder()
         .with_env_filter(filter)
         .init();
-
-
 
     // build our application with a route
     let app = Router::new()
@@ -283,11 +318,11 @@ async fn main() {
         .route("/ws/:subscription", get(axum_ws_handler))
         .route("/ws/bookstats/:subscription", get(axum_ws_handler))
         .with_state(connection_state.clone())
-    // logging so we can see whats going on
-    .layer(
-        TraceLayer::new_for_http()
-            .make_span_with(DefaultMakeSpan::default().include_headers(true))
-    );
+        // logging so we can see whats going on
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::default().include_headers(true)),
+        );
 
     // run our app with hyper, listening globally on port 3000
     // let listener = tokio::net::TcpListener::bind("0.0.0.0:9089").await.unwrap();
@@ -321,7 +356,6 @@ async fn main() {
     // ws_to_stdout.await.unwrap();
 }
 
-
 #[axum_macros::debug_handler]
 async fn axum_ws_handler(
     Path(subscription): Path<String>,
@@ -351,7 +385,12 @@ async fn root() -> &'static str {
 
 /// Actual websocket statemachine (one will be spawned per connection)
 // #[axum_macros::debug_handler]
-async fn axum_handle_socket(mut websocket: WebSocket, client_address: SocketAddr, request_endpoint: Uri, connection_state: ConnectionState) {
+async fn axum_handle_socket(
+    mut websocket: WebSocket,
+    client_address: SocketAddr,
+    request_endpoint: Uri,
+    connection_state: ConnectionState,
+) {
     // added by karun
     let (tx, rx): (
         UnboundedSender<axum_Message>,
@@ -372,7 +411,7 @@ async fn axum_handle_socket(mut websocket: WebSocket, client_address: SocketAddr
         // check if the endpoint is already subscribed to, if not
         // start a process to subscribe to the endpoint
         let already_subscribed: bool;
-        if !connection_state_locked.contains_key(&request_endpoint_str){
+        if !connection_state_locked.contains_key(&request_endpoint_str) {
             connection_state_locked.insert(request_endpoint_str.clone(), HashMap::new());
             already_subscribed = false;
         } else {
@@ -384,13 +423,12 @@ async fn axum_handle_socket(mut websocket: WebSocket, client_address: SocketAddr
         } else {
             panic!("Expected key in connection state not found")
         }
-        if !already_subscribed{
-            let _handle = subscribe_to_market_data(&request_endpoint_str, Arc::clone(&connection_state));
+        if !already_subscribed {
+            let _handle =
+                subscribe_to_market_data(&request_endpoint_str, Arc::clone(&connection_state));
             println!("Got the handle, all done!");
         }
     }
-
-
 
     // let peers = peer_map.lock().unwrap();
 
@@ -433,10 +471,10 @@ async fn axum_handle_socket(mut websocket: WebSocket, client_address: SocketAddr
         let mut connection_state_locked = connection_state.write().unwrap();
         if let Some(ws_endpoint_clients) = connection_state_locked.get_mut(&request_endpoint_str) {
             ws_endpoint_clients.remove(&client_address);
+            println!("There are {} clients remaining", ws_endpoint_clients.len());
         } else {
             panic!("Expected key in connection state not found")
         }
-
     }
     // returning from the handler closes the websocket connection
     println!("Websocket context {} destroyed", client_address);
