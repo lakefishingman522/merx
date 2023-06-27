@@ -265,16 +265,19 @@ async fn axum_handle_socket(
             connection_state_locked.insert(request_endpoint_str.clone(), HashMap::new());
             already_subscribed = false;
         } else {
+
             already_subscribed = true;
         }
         // Access the inner HashMap and add a value to it
         if let Some(ws_endpoint_clients) = connection_state_locked.get_mut(&request_endpoint_str) {
             ws_endpoint_clients.insert(client_address, tx);
-            info!(
-                "Subscription {} already exists, adding client to subscription. Total Subs: {}",
-                &request_endpoint_str,
-                ws_endpoint_clients.len()
-            )
+            if already_subscribed {
+                info!(
+                    "Subscription {} already exists, adding client to subscription. Total Subs: {}",
+                    &request_endpoint_str,
+                    ws_endpoint_clients.len()
+                );
+            }
         } else {
             panic!("Expected key in connection state not found")
         }
