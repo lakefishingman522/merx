@@ -271,8 +271,9 @@ async fn axum_handle_socket(
         if let Some(ws_endpoint_clients) = connection_state_locked.get_mut(&request_endpoint_str) {
             ws_endpoint_clients.insert(client_address, tx);
             println!(
-                "Subscription {} already exists, adding client to subscription",
-                &request_endpoint_str
+                "Subscription {} already exists, adding client to subscription. Total Subs: {}",
+                &request_endpoint_str,
+                ws_endpoint_clients.len()
             )
         } else {
             panic!("Expected key in connection state not found")
