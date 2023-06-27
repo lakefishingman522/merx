@@ -1,23 +1,13 @@
-use std::{
-    collections::HashMap,
-    net::SocketAddr,
-    sync::{RwLock},
-};
-use axum::{
-    routing::get,
-    Router,
-};
+use argh::FromArgs;
 use axum::extract::Extension;
+use axum::{routing::get, Router};
+use std::{collections::HashMap, net::SocketAddr, sync::RwLock};
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use argh::FromArgs;
-
-
 use functions::*;
 mod functions;
-
 
 #[derive(FromArgs)]
 /// A Market Data Proxy for CBAG market data requests
@@ -91,4 +81,3 @@ async fn main() {
         .await
         .unwrap();
 }
-

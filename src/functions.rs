@@ -10,7 +10,6 @@ use tokio::task::JoinHandle;
 use tokio::time::{timeout, Duration};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
-
 // for axum
 use axum::{body::Body, extract::ws::Message as axum_Message, http::Uri};
 use axum::{
@@ -158,7 +157,7 @@ pub fn subscribe_to_market_data(
                     }
                 }
             }
-            if closing_down{
+            if closing_down {
                 break;
             }
         }
@@ -309,7 +308,11 @@ async fn axum_handle_socket(
         let mut connection_state_locked = connection_state.write().unwrap();
         if let Some(ws_endpoint_clients) = connection_state_locked.get_mut(&request_endpoint_str) {
             ws_endpoint_clients.remove(&client_address);
-            info!("{} There are {} clients remaining", &request_endpoint_str, ws_endpoint_clients.len());
+            info!(
+                "{} There are {} clients remaining",
+                &request_endpoint_str,
+                ws_endpoint_clients.len()
+            );
         } else {
             panic!("Expected key in connection state not found")
         }
