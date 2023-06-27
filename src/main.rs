@@ -1,41 +1,23 @@
 use std::{
     collections::HashMap,
     net::SocketAddr,
-    sync::{Arc, RwLock},
+    sync::{RwLock},
 };
-
-use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
-use tokio::task::JoinHandle;
-use tokio::time::{timeout, Duration};
-
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-
-use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
-
-// for axum
-use axum::{body::Body, extract::ws::Message as axum_Message, http::Uri};
 use axum::{
-    extract::ws::{WebSocket, WebSocketUpgrade},
-    extract::{OriginalUri, Path, State},
-    http::{Response, StatusCode},
-    response::IntoResponse,
     routing::get,
-    Router, TypedHeader,
+    Router,
 };
-
-//allows to extract the IP of connecting user
-use argh::FromArgs;
-use axum::extract::connect_info::ConnectInfo;
-use axum::extract::ws::CloseFrame;
 use axum::extract::Extension;
-use reqwest::Client;
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
-use tracing::{error, info, warn};
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use lib::*;
+use argh::FromArgs;
 
-pub mod lib;
+
+use functions::*;
+mod functions;
+
 
 #[derive(FromArgs)]
 /// A Market Data Proxy for CBAG market data requests
