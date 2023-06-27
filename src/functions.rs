@@ -270,7 +270,7 @@ async fn axum_handle_socket(
         // Access the inner HashMap and add a value to it
         if let Some(ws_endpoint_clients) = connection_state_locked.get_mut(&request_endpoint_str) {
             ws_endpoint_clients.insert(client_address, tx);
-            println!(
+            info!(
                 "Subscription {} already exists, adding client to subscription. Total Subs: {}",
                 &request_endpoint_str,
                 ws_endpoint_clients.len()
