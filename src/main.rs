@@ -101,7 +101,7 @@ async fn main() {
     // let listener = tokio::net::TcpListener::bind("0.0.0.0:9089").await.unwrap();
     // axum::serve(listener, app).await.unwrap();
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 9089));
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
     info!("Starting Axum Server on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
@@ -127,6 +127,7 @@ fn from_tungstenite(message: Message) -> Option<axum::extract::ws::Message> {
     }
 }
 
+#[allow(unused_assignments)]
 fn subscribe_to_market_data(
     ws_endpoint: &str,
     connection_state: ConnectionState,
@@ -386,7 +387,7 @@ async fn axum_handle_socket(
         let mut connection_state_locked = connection_state.write().unwrap();
         if let Some(ws_endpoint_clients) = connection_state_locked.get_mut(&request_endpoint_str) {
             ws_endpoint_clients.remove(&client_address);
-            info!("There are {} clients remaining", ws_endpoint_clients.len());
+            info!("{} There are {} clients remaining", &request_endpoint_str, ws_endpoint_clients.len());
         } else {
             panic!("Expected key in connection state not found")
         }
