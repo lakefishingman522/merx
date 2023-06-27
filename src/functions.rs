@@ -330,7 +330,6 @@ async fn axum_handle_socket(
     let check_subscription_still_active = tokio::spawn(async move {
         loop {
             sleep(Duration::from_secs(1)).await;
-            println!("CHECKING");
             {
                 let connection_state_locked = connection_state_clone.read().unwrap();
                 if !connection_state_locked.contains_key(&endpoint_clone) {
