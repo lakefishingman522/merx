@@ -5,9 +5,9 @@ use std::{
 };
 
 use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
-use futures_util::{future, pin_mut, stream::TryStreamExt, StreamExt};
+use futures_util::{future, pin_mut, StreamExt};
 use tokio::task::JoinHandle;
-use tokio::time::{timeout, Duration};
+use tokio::time::{sleep, timeout, Duration};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 
 // for axum
@@ -63,13 +63,47 @@ pub fn subscribe_to_market_data(
         info!("Attempting to connect to {}", &ws_endpoint);
         let url = url::Url::parse(&full_url).unwrap();
         let mut closing_down = false;
+        let mut consecutive_errors = 0;
         // TODO: after x number of timeouts, should check if clients are still connected
         loop {
+            println!("consecutive errors {}", consecutive_errors);
+            if consecutive_errors >= 5 {
+                // disconnect from all sockets
+                warn!("Unable to connect, closing down subscription {}", &ws_endpoint);
+                let mut locked_state = connection_state.write().unwrap();
+                let listener_hash_map = locked_state.get(&ws_endpoint);
+                let active_listeners = match listener_hash_map {
+                    Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
+                    None => {
+                        info!("Subscription {} no longer required", &ws_endpoint);
+                        closing_down = true;
+                        break;
+                    }
+                };
+                warn!("Disconnecting clients {}", active_listeners.len());
+                for recp in active_listeners {
+                    let ms = axum_Message::Close(Some(CloseFrame {
+                        code: 1001,
+                        reason: "Requested endpoint not found".into(),
+                    }));
+                    println!("Sending close frame");
+                    match recp.unbounded_send(ms) {
+                        Ok(_) => (),
+                        Err(_try_send_error) => {
+                            warn!("Sending error, client likely disconnected.");
+                        }
+                    }
+                }
+                //remove the subcription from the connection state
+                locked_state.remove(&ws_endpoint);
+                break;
+            }
             let result = match timeout(Duration::from_secs(3), connect_async(url.clone())).await {
                 Ok(response) => response,
                 Err(err) => {
                     // Error occurred or connection timed out
                     error!("Timeout Error: {:?}", err);
+                    consecutive_errors += 1;
                     continue;
                 }
             };
@@ -77,7 +111,8 @@ pub fn subscribe_to_market_data(
             let (ws_stream, _) = match result {
                 Ok(whatever) => whatever,
                 Err(err) => {
-                    info!("Connection Error: {:?}", err);
+                    error!("Connection Error connecting to {}: {:?}", &ws_endpoint, err);
+                    consecutive_errors += 1;
                     continue;
                 }
             };
@@ -87,6 +122,7 @@ pub fn subscribe_to_market_data(
                 &ws_endpoint
             );
             let (_write, mut read) = ws_stream.split();
+            consecutive_errors = 0;
             loop {
                 let message = read.next().await;
                 let msg = message.unwrap();
@@ -249,7 +285,7 @@ async fn axum_handle_socket(
     // let (tx, rx) = unbounded();
 
     let request_endpoint_str = request_endpoint.to_string();
-    let (outgoing, incoming) = websocket.split();
+    let (outgoing, _incoming) = websocket.split();
 
     // add the client to the connection state. If the url isn't already subscribed
     // to, we need to spawn a process to subscribe to the url. This has to be done
@@ -265,7 +301,6 @@ async fn axum_handle_socket(
             connection_state_locked.insert(request_endpoint_str.clone(), HashMap::new());
             already_subscribed = false;
         } else {
-
             already_subscribed = true;
         }
         // Access the inner HashMap and add a value to it
@@ -290,20 +325,39 @@ async fn axum_handle_socket(
         }
     }
 
-    // this is unused but good to log incase there are incoming messages
-    let broadcast_incoming = incoming.try_for_each(|msg| {
-        info!(
-            "Received a message from {}: {}",
-            client_address,
-            msg.to_text().unwrap()
-        );
-        future::ok(())
+    let endpoint_clone = request_endpoint_str.clone();
+    let connection_state_clone = connection_state.clone();
+    let check_subscription_still_active = tokio::spawn(async move {
+        loop {
+            sleep(Duration::from_secs(1)).await;
+            println!("CHECKING");
+            {
+                let connection_state_locked = connection_state_clone.read().unwrap();
+                if !connection_state_locked.contains_key(&endpoint_clone) {
+                    warn!(
+                        "Subcription {} not longer active, disconnecting client ws",
+                        &endpoint_clone
+                    );
+                    return;
+                }
+            }
+        }
     });
+
+    // this is unused but good to log incase there are incoming messages
+    // let broadcast_incoming = incoming.try_for_each(|msg| {
+    //     info!(
+    //         "Received a message from {}: {}",
+    //         client_address,
+    //         msg.to_text().unwrap()
+    //     );
+    //     future::ok(())
+    // });
 
     let receive_from_others = rx.map(Ok).forward(outgoing);
 
-    pin_mut!(broadcast_incoming, receive_from_others);
-    future::select(broadcast_incoming, receive_from_others).await;
+    pin_mut!(check_subscription_still_active, receive_from_others);
+    future::select(check_subscription_still_active, receive_from_others).await;
 
     info!("{} disconnected", &client_address);
 
@@ -317,8 +371,6 @@ async fn axum_handle_socket(
                 &request_endpoint_str,
                 ws_endpoint_clients.len()
             );
-        } else {
-            panic!("Expected key in connection state not found")
         }
     }
     // returning from the handler closes the websocket connection
