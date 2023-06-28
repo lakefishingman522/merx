@@ -66,7 +66,6 @@ pub fn subscribe_to_market_data(
         let mut consecutive_errors = 0;
         // TODO: after x number of timeouts, should check if clients are still connected
         loop {
-            println!("consecutive errors {}", consecutive_errors);
             if consecutive_errors >= 5 {
                 // disconnect from all sockets
                 warn!("Unable to connect, closing down subscription {}", &ws_endpoint);
