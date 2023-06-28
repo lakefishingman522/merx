@@ -68,7 +68,10 @@ pub fn subscribe_to_market_data(
         loop {
             if consecutive_errors >= 5 {
                 // disconnect from all sockets
-                warn!("Unable to connect, closing down subscription {}", &ws_endpoint);
+                warn!(
+                    "Unable to connect, closing down subscription {}",
+                    &ws_endpoint
+                );
                 let mut locked_state = connection_state.write().unwrap();
                 let listener_hash_map = locked_state.get(&ws_endpoint);
                 let active_listeners = match listener_hash_map {
@@ -124,7 +127,16 @@ pub fn subscribe_to_market_data(
             consecutive_errors = 0;
             loop {
                 let message = read.next().await;
-                let msg = message.unwrap();
+                let msg = match message {
+                    Some(msg) => msg,
+                    None => {
+                        error!(
+                            "Unable to read message, restarting subscription {}",
+                            ws_endpoint
+                        );
+                        break;
+                    }
+                };
                 match msg {
                     Ok(message_text) => {
                         // let data = message_text.clone().into_data();
@@ -326,12 +338,23 @@ async fn axum_handle_socket(
 
     let endpoint_clone = request_endpoint_str.clone();
     let connection_state_clone = connection_state.clone();
+    let client_address_clone = client_address.clone();
     let check_subscription_still_active = tokio::spawn(async move {
         loop {
             sleep(Duration::from_secs(1)).await;
             {
                 let connection_state_locked = connection_state_clone.read().unwrap();
-                if !connection_state_locked.contains_key(&endpoint_clone) {
+                // Check if the outer HashMap contains the key
+                if let Some(subscribed_clients) = connection_state_locked.get(&endpoint_clone) {
+                    // Check if the inner HashMap contains the key
+                    if !subscribed_clients.contains_key(&client_address_clone) {
+                        info!(
+                            "Client {} Disconnected. ending check task",
+                            &client_address_clone
+                        );
+                        return;
+                    }
+                } else {
                     warn!(
                         "Subcription {} not longer active, disconnecting client ws",
                         &endpoint_clone
