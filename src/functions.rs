@@ -115,6 +115,7 @@ pub fn subscribe_to_market_data(
                 Err(err) => {
                     error!("Connection Error connecting to {}: {:?}", &ws_endpoint, err);
                     consecutive_errors += 1;
+                    sleep(Duration::from_millis(500)).await;
                     continue;
                 }
             };
