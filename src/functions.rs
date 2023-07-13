@@ -5,7 +5,7 @@ use std::{
 };
 
 use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
-use futures_util::{future, pin_mut, StreamExt};
+use futures_util::{pin_mut, StreamExt};
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, timeout, Duration};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
@@ -185,7 +185,7 @@ pub fn subscribe_to_market_data(
                                     break;
                                 }
                             };
-                            if active_listeners.len() == 0 {
+                            if active_listeners.is_empty() {
                                 info!(
                                     "Removing subscription {} from subscriptions \
                             no more listeners",
@@ -246,11 +246,10 @@ pub async fn forward_request(
         }
         Err(_err) => {
             // Build a 404 response with a body of type `axum::http::response::Body`
-            let response = Response::builder()
+            Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::from("Not Found"))
-                .unwrap();
-            response
+                .unwrap()
         }
     }
 }
@@ -297,7 +296,7 @@ async fn axum_handle_socket(
     // let (tx, rx) = unbounded();
 
     let request_endpoint_str = request_endpoint.to_string();
-    let (outgoing, _incoming) = websocket.split();
+    let (outgoing, mut incoming) = websocket.split();
 
     // add the client to the connection state. If the url isn't already subscribed
     // to, we need to spawn a process to subscribe to the url. This has to be done
@@ -308,13 +307,12 @@ async fn axum_handle_socket(
         let mut connection_state_locked = connection_state.write().unwrap();
         // check if the endpoint is already subscribed to, if not
         // start a process to subscribe to the endpoint
-        let already_subscribed: bool;
-        if !connection_state_locked.contains_key(&request_endpoint_str) {
+        let already_subscribed = if !connection_state_locked.contains_key(&request_endpoint_str) {
             connection_state_locked.insert(request_endpoint_str.clone(), HashMap::new());
-            already_subscribed = false;
+            false
         } else {
-            already_subscribed = true;
-        }
+            true
+        };
         // Access the inner HashMap and add a value to it
         if let Some(ws_endpoint_clients) = connection_state_locked.get_mut(&request_endpoint_str) {
             ws_endpoint_clients.insert(client_address, tx);
@@ -339,10 +337,10 @@ async fn axum_handle_socket(
 
     let endpoint_clone = request_endpoint_str.clone();
     let connection_state_clone = connection_state.clone();
-    let client_address_clone = client_address.clone();
+    let client_address_clone = client_address;
     let check_subscription_still_active = tokio::spawn(async move {
         loop {
-            sleep(Duration::from_secs(1)).await;
+            sleep(Duration::from_millis(1000)).await;
             {
                 let connection_state_locked = connection_state_clone.read().unwrap();
                 // Check if the outer HashMap contains the key
@@ -376,10 +374,26 @@ async fn axum_handle_socket(
     //     future::ok(())
     // });
 
+    let recv_task = tokio::spawn(async move {
+        // used to disconnect the the websocket when a close frame is
+        // recived
+        while let Some(Ok(msg)) = incoming.next().await {
+            if let axum::extract::ws::Message::Close(_msg) = msg {
+                // info!("Received a close message!!");
+                return;
+            }
+        }
+    });
+
     let receive_from_others = rx.map(Ok).forward(outgoing);
 
     pin_mut!(check_subscription_still_active, receive_from_others);
-    future::select(check_subscription_still_active, receive_from_others).await;
+    // future::select(recv_task, receive_from_others).await;
+    tokio::select! {
+        _ = recv_task => {},
+        _ = receive_from_others => {},
+        _ = check_subscription_still_active => {},
+    }
 
     info!("{} disconnected", &client_address);
 
