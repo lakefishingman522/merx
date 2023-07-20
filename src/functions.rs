@@ -379,7 +379,7 @@ async fn axum_handle_socket(
         // recived
         while let Some(Ok(msg)) = incoming.next().await {
             if let axum::extract::ws::Message::Close(_msg) = msg {
-                // info!("Received a close message!!");
+                info!("{} Received a close frame", &client_address);
                 return;
             }
         }
