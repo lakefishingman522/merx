@@ -152,7 +152,7 @@ pub fn subscribe_to_market_data(
                             let active_listeners = match listener_hash_map {
                                 Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
                                 None => {
-                                    info!("subsciption no longer required");
+                                    info!("subscription no longer required");
                                     return;
                                     //todo quite this stream, no longer require
                                 }
