@@ -6,8 +6,12 @@ use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use functions::*;
 mod functions;
+mod routes_config;
+mod md_handlers;
+
+
+use functions::*;
 
 #[derive(FromArgs)]
 /// A Market Data Proxy for CBAG market data requests
@@ -43,7 +47,7 @@ async fn main() {
 
     // connection state which will hold a state of all subscriptions
     // and their respective clients
-    let connection_state = ConnectionState::new(RwLock::new(HashMap::new()));
+    let connection_state = ConnectionState::new(RwLock::new(ConnectionStateStruct::new()));
     let cbag_uri_clone = cbag_uri.clone();
 
     // build our application with a route
