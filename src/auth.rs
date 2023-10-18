@@ -14,7 +14,6 @@ pub async fn authenticate_token(auth_uri: &str, token: &str) -> Result<(), ()>{
     let auth_address = format!("https://{}/api/exchanges", auth_uri);
     println!("auth address: {}", auth_address);
 
-    // create a get request to the auth uri with the token as an Authorization header
     let res = client
         .get(auth_address)
         .header("Authorization", format!("Token {}", token))
