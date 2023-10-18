@@ -2,13 +2,14 @@ use std::{
     collections::HashMap,
     net::SocketAddr,
     sync::{Arc, RwLock},
-    thread
+    thread,
 };
 
+use futures::future;
+use futures::stream::TryStreamExt;
 use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 use futures_util::{pin_mut, StreamExt};
-use futures::future;
-use futures::stream::TryStreamExt; // Import the TryStreamExt trait
+// Import the TryStreamExt trait
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, timeout, Duration};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
@@ -17,8 +18,9 @@ use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
 use axum::{body::Body, extract::ws::Message as axum_Message, http::Uri};
 use axum::{
     extract::ws::{WebSocket, WebSocketUpgrade},
-    extract::{OriginalUri, Path, State},
-    http::{Response, StatusCode, Request},
+    extract::{OriginalUri, Query, State},
+    http::HeaderMap,
+    http::{Request, Response, StatusCode},
     response::IntoResponse,
     TypedHeader,
 };
@@ -30,11 +32,11 @@ use axum::extract::Extension;
 use reqwest::Client;
 use tracing::{error, info, warn};
 
-
 // use crate::routes_config::{ROUTES, SUB_TYPE};
 
-use crate::routes_config::{MarketDataType, SubscriptionType, ROUTES,  SUB_TYPE};
+use crate::auth::authenticate_token;
 use crate::md_handlers::cbbo_v1;
+use crate::routes_config::{MarketDataType, SubscriptionType, ROUTES, SUB_TYPE};
 
 pub type Tx = UnboundedSender<axum::extract::ws::Message>;
 // pub type ConnectionState = Arc<RwLock<HashMap<String, HashMap<SocketAddr, Tx>>>>;
@@ -53,6 +55,12 @@ impl ConnectionStateStruct {
     pub fn new() -> Self {
         Self::default()
     }
+}
+
+#[derive(Clone)]
+pub struct URIs {
+    pub cbag_uri: String,
+    pub auth_uri: String,
 }
 
 pub type ConnectionState = Arc<RwLock<ConnectionStateStruct>>;
@@ -309,6 +317,45 @@ pub async fn forward_request(
     }
 }
 
+pub async fn authenticated_forward_request(
+    OriginalUri(original_uri): OriginalUri,
+    Extension(uris): Extension<URIs>,
+) -> impl IntoResponse {
+    info!(
+        "Received Authenticated REST Forward Request {}",
+        original_uri
+    );
+    // let target_url = format!("http://{}{}", cbag_uri, original_uri);
+
+    // Make a GET request to the target server
+    let client = Client::new();
+    // let target_res = client.get(&target_url).send().await;
+
+    match target_res {
+        Ok(response) => {
+            // Extract the status code
+            let status = StatusCode::from_u16(response.status().as_u16()).unwrap();
+            // Extract the headers
+            let headers = response.headers().clone();
+            // Extract the body as bytes
+            let body_bytes = response.bytes().await.unwrap();
+            // Create an Axum response using the extracted parts
+            let mut axum_response = Response::new(Body::from(body_bytes));
+            *axum_response.status_mut() = status;
+            axum_response.headers_mut().extend(headers);
+
+            axum_response
+        }
+        Err(_err) => {
+            // Build a 404 response with a body of type `axum::http::response::Body`
+            Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::from("Not Found"))
+                .unwrap()
+        }
+    }
+}
+
 pub async fn root() -> &'static str {
     "Service is running"
 }
@@ -316,14 +363,15 @@ pub async fn root() -> &'static str {
 #[axum_macros::debug_handler]
 pub async fn axum_ws_handler(
     // Path(_symbol): Path<String>,
-    // Query(params): Query<HashMap<String, String>>,
+    Query(params): Query<HashMap<String, String>>,
     OriginalUri(original_uri): OriginalUri,
     ws: WebSocketUpgrade,
     user_agent: Option<TypedHeader<headers::UserAgent>>,
     // authorization_header: Option<TypedHeader<headers::Authorization<Token>>>,
+    headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(connection_state): State<ConnectionState>,
-    Extension(cbag_uri): Extension<String>,
+    Extension(uris): Extension<URIs>,
     req: Request<Body>,
 ) -> impl IntoResponse {
     let user_agent = if let Some(TypedHeader(user_agent)) = user_agent {
@@ -332,6 +380,7 @@ pub async fn axum_ws_handler(
         String::from("Unknown browser")
     };
     info!("{addr} connected User-Agent {user_agent}. Requesting subscription: {original_uri}");
+    info!("Auth Uri: {}", uris.auth_uri);
 
     let base_route = req.uri().path();
 
@@ -339,18 +388,46 @@ pub async fn axum_ws_handler(
     info!("base route {}", base_route);
 
     if !ROUTES.contains_key(&base_route) {
-        warn!("Endpoint not available {}", original_uri);
+        warn!("Endpoint not available {}", base_route);
         return (StatusCode::BAD_REQUEST, "Endpoint not available").into_response();
         //TODO
     }
-    let route = ROUTES.get(&original_uri.to_string()).unwrap();
+    let route = ROUTES.get(&base_route.to_string()).unwrap();
 
     if !SUB_TYPE.contains_key(&base_route) {
-        warn!("Endpoint not available {}", original_uri);
+        warn!("Endpoint not available {}", base_route);
         return (StatusCode::BAD_REQUEST, "Endpoint not available").into_response();
         //TODO
     }
-    let subscription_type = SUB_TYPE.get(&original_uri.to_string()).unwrap();
+    let subscription_type = SUB_TYPE.get(&base_route.to_string()).unwrap();
+
+    // if this isn't a direct subscription, then we have to authenticate
+    if !matches!(subscription_type, SubscriptionType::DIRECT) {
+        let token = if let Some(token) = headers.get("Authorization") {
+            let token = if let Ok(tok) = token.to_str() {
+                tok
+            } else {
+                warn!("Unable to parse token");
+                return (StatusCode::BAD_REQUEST, "Unable to parse token").into_response();
+            };
+            token
+            // info!("Authorization: {}", token);
+        } else if let Some(token) = params.get("token") {
+            info!("Token: {}", token);
+            token
+        } else {
+            return (StatusCode::UNAUTHORIZED, "No token provided").into_response();
+        };
+        match authenticate_token(&uris.auth_uri, token).await {
+            Ok(_) => {
+                // authenticated ok
+            }
+            Err(_) => {
+                warn!("Unable to authenticate token");
+                return (StatusCode::UNAUTHORIZED, "Unable to authenticate token").into_response();
+            }
+        }
+    }
 
     // respond with a 404 error
     // if original_uri != "/ws/snapshot/subscription" {
@@ -364,7 +441,7 @@ pub async fn axum_ws_handler(
             addr,
             original_uri,
             connection_state,
-            cbag_uri,
+            uris.cbag_uri,
             route,
             subscription_type,
         )
@@ -452,15 +529,13 @@ async fn axum_handle_socket(
     ) = unbounded();
     // let (tx, rx) = unbounded();
 
-
     let thread_id = thread::current().id();
     println!("This code is running on thread {:?}", thread_id);
-
 
     let request_endpoint_str = request_endpoint.to_string();
     let recv_task_tx = tx.clone();
     let recv_task_cbag_uri = cbag_uri.clone();
-    let (outgoing, mut incoming) = websocket.split();
+    let (outgoing, incoming) = websocket.split();
 
     // add the client to the connection state. If the url isn't already subscribed
     // to, we need to spawn a process to subscribe to the url. This has to be done
@@ -490,7 +565,9 @@ async fn axum_handle_socket(
         loop {
             sleep(Duration::from_millis(1000)).await;
             {
-                if matches!(subscription_type_clone, SubscriptionType::SUBSCRIPTION) && (tokio::time::Instant::now() - connection_time < Duration::from_secs(20)) {
+                if matches!(subscription_type_clone, SubscriptionType::SUBSCRIPTION)
+                    && (tokio::time::Instant::now() - connection_time < Duration::from_secs(20))
+                {
                     continue;
                 }
 
@@ -551,49 +628,45 @@ async fn axum_handle_socket(
 
     // this is unused but good to log incase there are incoming messages
     let recv_task = incoming.try_for_each(|msg| {
+        info!(
+            "Received a message from {}: {}",
+            client_address,
+            msg.to_text().unwrap()
+        );
 
+        info!("The client address is {}", &client_address);
 
-            info!(
-                "Received a message from {}: {}",
-                client_address,
-                msg.to_text().unwrap()
-            );
-
-            info!("The client address is {}", &client_address);
-
-            match msg {
-                axum::extract::ws::Message::Close(_msg) => {
-                    info!("{} Received a close frame", &client_address);
-                    // return future::ok(())
-                }
-                axum::extract::ws::Message::Ping(_msg) => {
-                    info!("{} Received a ping frame", &client_address);
-                }
-                axum::extract::ws::Message::Pong(_msg) => {
-                    info!("{} Received a pong frame", &client_address);
-                }
-                axum::extract::ws::Message::Text(msg_str) => {
-                    info!("{} Received a text frame", &client_address);
-                    if matches!(subscription_type, SubscriptionType::SUBSCRIPTION){
-                        match market_data_type {
-                            MarketDataType::CbboV1 => {
-                                cbbo_v1::handle_subscription(
-                                    &client_address,
-                                    &recv_task_connection_state,
-                                    msg_str,
-                                    recv_task_cbag_uri.clone(),
-                                    recv_task_tx.clone(),
-                                );
-                            }
+        match msg {
+            axum::extract::ws::Message::Close(_msg) => {
+                info!("{} Received a close frame", &client_address);
+                // return future::ok(())
+            }
+            axum::extract::ws::Message::Ping(_msg) => {
+                info!("{} Received a ping frame", &client_address);
+            }
+            axum::extract::ws::Message::Pong(_msg) => {
+                info!("{} Received a pong frame", &client_address);
+            }
+            axum::extract::ws::Message::Text(msg_str) => {
+                info!("{} Received a text frame", &client_address);
+                if matches!(subscription_type, SubscriptionType::SUBSCRIPTION) {
+                    match market_data_type {
+                        MarketDataType::CbboV1 => {
+                            cbbo_v1::handle_subscription(
+                                &client_address,
+                                &recv_task_connection_state,
+                                msg_str,
+                                recv_task_cbag_uri.clone(),
+                                recv_task_tx.clone(),
+                            );
                         }
-
                     }
                 }
-                axum::extract::ws::Message::Binary(_msg) => {
-                    info!("{} Received a binary frame", &client_address);
-                }
             }
-
+            axum::extract::ws::Message::Binary(_msg) => {
+                info!("{} Received a binary frame", &client_address);
+            }
+        }
 
         future::ok(())
         // futures_util::future::ready(())
@@ -602,9 +675,6 @@ async fn axum_handle_socket(
 
     //write a future to be able to read and print websocket messages from incoming without spawning
     // a new task
-
-
-
 
     // let recv_task = tokio::spawn(async move {
     //     // used to disconnect the the websocket when a close frame is
@@ -645,31 +715,29 @@ async fn axum_handle_socket(
     //         }
     //     }
 
+    // //add a timeout to the incoming stream
+    // while let Some(Ok(msg)) = incoming.next().await {
 
-        // //add a timeout to the incoming stream
-        // while let Some(Ok(msg)) = incoming.next().await {
-
-
-        //     // if let axum::extract::ws::Message::Close(_msg) = msg {
-        //     //     info!("{} Received a close frame", &client_address);
-        //     //     return;
-        //     // } else if let axum::extract::ws::Message::Ping(_msg) = msg {
-        //     //     info!("{} Received a ping frame", &client_address);
-        //     //     continue;
-        //     // } else if let axum::extract::ws::Message::Pong(_msg) = msg {
-        //     //     info!("{} Received a pong frame", &client_address);
-        //     //     continue;
-        //     // } else if let axum::extract::ws::Message::Text(_msg) = msg {
-        //     //     info!("{} Received a text frame", &client_address);
-        //     //     continue;
-        //     // } else if let axum::extract::ws::Message::Binary(_msg) = msg {
-        //     //     info!("{} Received a binary frame", &client_address);
-        //     //     continue;
-        //     // } else {
-        //     //     info!("{} Received an unknown frame", &client_address);
-        //     //     continue;
-        //     // }
-        // }
+    //     // if let axum::extract::ws::Message::Close(_msg) = msg {
+    //     //     info!("{} Received a close frame", &client_address);
+    //     //     return;
+    //     // } else if let axum::extract::ws::Message::Ping(_msg) = msg {
+    //     //     info!("{} Received a ping frame", &client_address);
+    //     //     continue;
+    //     // } else if let axum::extract::ws::Message::Pong(_msg) = msg {
+    //     //     info!("{} Received a pong frame", &client_address);
+    //     //     continue;
+    //     // } else if let axum::extract::ws::Message::Text(_msg) = msg {
+    //     //     info!("{} Received a text frame", &client_address);
+    //     //     continue;
+    //     // } else if let axum::extract::ws::Message::Binary(_msg) = msg {
+    //     //     info!("{} Received a binary frame", &client_address);
+    //     //     continue;
+    //     // } else {
+    //     //     info!("{} Received an unknown frame", &client_address);
+    //     //     continue;
+    //     // }
+    // }
     // });
 
     let receive_from_others = rx.map(Ok).forward(outgoing);

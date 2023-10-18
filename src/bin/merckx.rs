@@ -11,7 +11,7 @@ use tracing_subscriber::EnvFilter;
 
 // import functions.rs
 use cade_md_proxy::functions::{
-    axum_ws_handler, fallback, forward_request, root, ConnectionState, ConnectionStateStruct,
+    axum_ws_handler, fallback, forward_request, root, ConnectionState, ConnectionStateStruct, URIs,
 };
 
 #[derive(FromArgs)]
@@ -21,6 +21,9 @@ struct Args {
     /// the uri for the cbag. Can be cbag load balancer
     cbag_uri: String,
 
+    #[argh(option, default = "String::from(\"none\")")]
+    /// the uri for the authentication server. This is normally portal.coinroutes.com
+    auth_uri: String,
     /// optional: specify port for gRPC server. 50051 by default
     #[argh(option, default = "50051")]
     port: u16,
@@ -39,11 +42,20 @@ async fn main() {
     if args.cbag_uri == "none" {
         panic!("cbag-uri is required")
     }
-    let cbag_uri = args.cbag_uri.clone();
+    if args.auth_uri == "none" {
+        panic!("auth-uri is required")
+    }
+    let uris = URIs {
+        cbag_uri: args.cbag_uri.clone(),
+        auth_uri: args.auth_uri.clone(),
+    };
+    // let cbag_uri = args.cbag_uri.clone();
+    // let auth_uri = args.auth_uri.clone();
     let port = args.port;
 
     info!("Running Merckx");
-    info!("CBAG Uri  : {}", cbag_uri);
+    info!("CBAG Uri  : {}", uris.cbag_uri);
+    info!("Auth Server Uri  : {}", uris.auth_uri);
     info!("Proxy port: {}", port);
 
     // connection state which will hold a state of all subscriptions
@@ -51,7 +63,6 @@ async fn main() {
     let connection_state = ConnectionState::new(RwLock::new(ConnectionStateStruct::new()));
     // will hold the number of subscriptions per client. Useful for knowing
     // when to disconnect from the websocket session
-    let cbag_uri_clone = cbag_uri.clone();
 
     // build our application with a route
     let app = Router::new()
@@ -59,19 +70,20 @@ async fn main() {
         .route("/", get(root))
         // REST endpoints
         .route("/version", get(forward_request))
-        .route("/book/:symbol", get(forward_request))
-        .route("/properties/:symbol", get(forward_request))
-        .route("/legacy-cbbo/:symbol", get(forward_request))
-        .route("/cost-calculator/:symbol", get(forward_request))
+        // .route("/book/:symbol", get(forward_request))
+        // .route("/properties/:symbol", get(forward_request))
+        // .route("/legacy-cbbo/:symbol", get(forward_request))
+        // .route("/cost-calculator/:symbol", get(forward_request))
         // WS Endpoints
-        .route("/ws/snapshot/:subscription", get(axum_ws_handler))
-        .route("/ws/bookstats/:symbol", get(axum_ws_handler))
-        .route("/ws/legacy-cbbo/:symbol", get(axum_ws_handler))
-        .route("/ws/cost-calculator/:symbol", get(axum_ws_handler))
+        // .route("/ws/snapshot/:subscription", get(axum_ws_handler))
+        // .route("/ws/bookstats/:symbol", get(axum_ws_handler))
+        // .route("/ws/legacy-cbbo/:symbol", get(axum_ws_handler))
+        // .route("/ws/cost-calculator/:symbol", get(axum_ws_handler))
         .route("/api/streaming/cbbo", get(axum_ws_handler)) //TODO: slash helper
+        .route("/cost-calculator", get(forward_request))
         .fallback(fallback)
         .with_state(connection_state.clone())
-        .layer(Extension(cbag_uri_clone))
+        .layer(Extension(uris))
         // logging so we can see whats going on
         .layer(
             TraceLayer::new_for_http()

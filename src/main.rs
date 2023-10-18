@@ -6,11 +6,10 @@ use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-mod functions;
-mod routes_config;
-mod md_handlers;
 mod auth;
-
+mod functions;
+mod md_handlers;
+mod routes_config;
 
 use functions::*;
 

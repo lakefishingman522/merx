@@ -1,8 +1,6 @@
 use reqwest::Client;
 
-
-
-pub async fn authenticate_token(auth_uri: &str, token: &str) -> Result<(), ()>{
+pub async fn authenticate_token(auth_uri: &str, token: &str) -> Result<(), ()> {
     println!("authenticating sleep ing");
     let client = Client::new();
     let token = if token.starts_with("Token ") {
@@ -21,18 +19,16 @@ pub async fn authenticate_token(auth_uri: &str, token: &str) -> Result<(), ()>{
         .await;
 
     match res {
-        Ok(res) => {
-            match res.status() {
-                reqwest::StatusCode::OK => {
-                    println!("auth success");
-                    Ok(())
-                }
-                _ => {
-                    println!("auth failed");
-                    Err(())
-                }
+        Ok(res) => match res.status() {
+            reqwest::StatusCode::OK => {
+                println!("auth success");
+                Ok(())
             }
-        }
+            _ => {
+                println!("auth failed");
+                Err(())
+            }
+        },
         Err(e) => {
             println!("error: {:?}", e);
             Err(())
