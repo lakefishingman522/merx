@@ -9,6 +9,7 @@ use tracing_subscriber::EnvFilter;
 mod functions;
 mod routes_config;
 mod md_handlers;
+mod auth;
 
 
 use functions::*;
