@@ -34,8 +34,8 @@ use tracing::{error, info, warn};
 
 // use crate::routes_config::{ROUTES, SUB_TYPE};
 
-use crate::auth::authenticate_token;
-use crate::md_handlers::cbbo_v1;
+use crate::{auth::authenticate_token, md_handlers::rest_cost_calculator_v1::RestCostCalculatorV1RequestBody};
+use crate::md_handlers::{cbbo_v1, market_depth_v1};
 use crate::routes_config::{MarketDataType, SubscriptionType, ROUTES, SUB_TYPE};
 
 pub type Tx = UnboundedSender<axum::extract::ws::Message>;
@@ -88,6 +88,7 @@ pub fn subscribe_to_market_data(
     ws_endpoint: &str,
     connection_state: ConnectionState,
     cbag_uri: String,
+    market_data_type: MarketDataType,
 ) -> JoinHandle<()> {
     info!("Starting a new subscription to {}", ws_endpoint);
     //TODO: add this as a parameter
@@ -200,6 +201,26 @@ pub fn subscribe_to_market_data(
                 };
                 match msg {
                     Ok(message_text) => {
+                        // transform the raw message in accordance with its market data type
+                        let message_transform_result: Result<Message, String> =
+                            match market_data_type {
+                                // match with all marketdattype
+                                MarketDataType::CbboV1 => cbbo_v1::transform_message(message_text),
+                                MarketDataType::MarketDepthV1 => market_depth_v1::transform_message(message_text),
+                                MarketDataType::Direct => Ok(message_text),
+                                MarketDataType::RestCostCalculatorV1 => {
+                                    Err("Unexpected Market Data Type".into())
+                                }
+                            };
+
+                        let message_text = match message_transform_result {
+                            Ok(message) => message,
+                            Err(err) => {
+                                error!("Error transforming message: {}", err);
+                                continue;
+                            }
+                        };
+
                         // let data = message_text.clone().into_data();
                         // let data = msg.clone().into_data();
                         // tokio::io::stdout().write_all(&data).await.unwrap();
@@ -291,45 +312,6 @@ pub async fn forward_request(
     // Make a GET request to the target server
     let client = Client::new();
     let target_res = client.get(&target_url).send().await;
-
-    match target_res {
-        Ok(response) => {
-            // Extract the status code
-            let status = StatusCode::from_u16(response.status().as_u16()).unwrap();
-            // Extract the headers
-            let headers = response.headers().clone();
-            // Extract the body as bytes
-            let body_bytes = response.bytes().await.unwrap();
-            // Create an Axum response using the extracted parts
-            let mut axum_response = Response::new(Body::from(body_bytes));
-            *axum_response.status_mut() = status;
-            axum_response.headers_mut().extend(headers);
-
-            axum_response
-        }
-        Err(_err) => {
-            // Build a 404 response with a body of type `axum::http::response::Body`
-            Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::from("Not Found"))
-                .unwrap()
-        }
-    }
-}
-
-pub async fn authenticated_forward_request(
-    OriginalUri(original_uri): OriginalUri,
-    Extension(uris): Extension<URIs>,
-) -> impl IntoResponse {
-    info!(
-        "Received Authenticated REST Forward Request {}",
-        original_uri
-    );
-    // let target_url = format!("http://{}{}", cbag_uri, original_uri);
-
-    // Make a GET request to the target server
-    let client = Client::new();
-    // let target_res = client.get(&target_url).send().await;
 
     match target_res {
         Ok(response) => {
@@ -454,6 +436,7 @@ pub fn add_client_to_subscription(
     request_endpoint_str: &String,
     cbag_uri: String,
     tx: UnboundedSender<axum::extract::ws::Message>,
+    market_data_type: MarketDataType,
 ) {
     {
         let mut connection_state_locked = connection_state.write().unwrap();
@@ -506,6 +489,7 @@ pub fn add_client_to_subscription(
                 &request_endpoint_str,
                 Arc::clone(&connection_state),
                 cbag_uri,
+                market_data_type,
             );
         }
     }
@@ -552,6 +536,7 @@ async fn axum_handle_socket(
             &request_endpoint_str,
             cbag_uri,
             tx,
+            market_data_type.clone(),
         );
     }
 
@@ -658,7 +643,24 @@ async fn axum_handle_socket(
                                 msg_str,
                                 recv_task_cbag_uri.clone(),
                                 recv_task_tx.clone(),
+                                market_data_type.clone(),
                             );
+                        }
+                        MarketDataType::MarketDepthV1 => {
+                            market_depth_v1::handle_subscription(
+                                &client_address,
+                                &recv_task_connection_state,
+                                msg_str,
+                                recv_task_cbag_uri.clone(),
+                                recv_task_tx.clone(),
+                                market_data_type.clone(),
+                            );
+                        }
+                        RestCostCalculatorV1RequestBody => {
+                            error!("unexpected Market Data Type");
+                        }
+                        MarketDataType::Direct => {
+                            info!("{} Received a message, ignoring", &client_address);
                         }
                     }
                 }
