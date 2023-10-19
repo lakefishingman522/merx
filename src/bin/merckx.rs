@@ -1,7 +1,8 @@
 use argh::FromArgs;
 use axum::extract::Extension;
+use axum::routing::post;
 use axum::{routing::get, Router};
-use std::{collections::HashMap, net::SocketAddr, sync::RwLock};
+use std::{net::SocketAddr, sync::RwLock};
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -13,6 +14,8 @@ use tracing_subscriber::EnvFilter;
 use cade_md_proxy::functions::{
     axum_ws_handler, fallback, forward_request, root, ConnectionState, ConnectionStateStruct, URIs,
 };
+
+use cade_md_proxy::md_handlers::rest_cost_calculator_v1;
 
 #[derive(FromArgs)]
 /// Merckx is a market data handler
@@ -74,13 +77,17 @@ async fn main() {
         // .route("/properties/:symbol", get(forward_request))
         // .route("/legacy-cbbo/:symbol", get(forward_request))
         // .route("/cost-calculator/:symbol", get(forward_request))
+        .route(
+            "/api/cost_calculator",
+            post(rest_cost_calculator_v1::handle_request),
+        )
         // WS Endpoints
         // .route("/ws/snapshot/:subscription", get(axum_ws_handler))
         // .route("/ws/bookstats/:symbol", get(axum_ws_handler))
         // .route("/ws/legacy-cbbo/:symbol", get(axum_ws_handler))
         // .route("/ws/cost-calculator/:symbol", get(axum_ws_handler))
         .route("/api/streaming/cbbo", get(axum_ws_handler)) //TODO: slash helper
-        .route("/cost-calculator", get(forward_request))
+        .route("/api/streaming/market_depth", get(axum_ws_handler)) //TODO: slash helper
         .fallback(fallback)
         .with_state(connection_state.clone())
         .layer(Extension(uris))
