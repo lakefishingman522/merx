@@ -34,9 +34,11 @@ use tracing::{error, info, warn};
 
 // use crate::routes_config::{ROUTES, SUB_TYPE};
 
-use crate::{auth::authenticate_token, md_handlers::rest_cost_calculator_v1::RestCostCalculatorV1RequestBody};
 use crate::md_handlers::{cbbo_v1, market_depth_v1};
 use crate::routes_config::{MarketDataType, SubscriptionType, ROUTES, SUB_TYPE};
+use crate::{
+    auth::authenticate_token, md_handlers::rest_cost_calculator_v1::RestCostCalculatorV1RequestBody,
+};
 
 pub type Tx = UnboundedSender<axum::extract::ws::Message>;
 // pub type ConnectionState = Arc<RwLock<HashMap<String, HashMap<SocketAddr, Tx>>>>;
@@ -206,7 +208,9 @@ pub fn subscribe_to_market_data(
                             match market_data_type {
                                 // match with all marketdattype
                                 MarketDataType::CbboV1 => cbbo_v1::transform_message(message_text),
-                                MarketDataType::MarketDepthV1 => market_depth_v1::transform_message(message_text),
+                                MarketDataType::MarketDepthV1 => {
+                                    market_depth_v1::transform_message(message_text)
+                                }
                                 MarketDataType::Direct => Ok(message_text),
                                 MarketDataType::RestCostCalculatorV1 => {
                                     Err("Unexpected Market Data Type".into())

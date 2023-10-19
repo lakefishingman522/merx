@@ -13,4 +13,3 @@ pub fn exchange_to_cbag_market(exchange: &str) -> String {
         _ => exchange.to_uppercase(),
     }
 }
-

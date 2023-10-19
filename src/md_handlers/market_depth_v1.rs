@@ -5,7 +5,7 @@ use crate::{
 };
 use futures_channel::mpsc::UnboundedSender;
 use serde::{Deserialize, Serialize};
-use std::{net::SocketAddr, collections::HashMap};
+use std::{collections::HashMap, net::SocketAddr};
 use tokio_tungstenite::tungstenite::Message;
 
 pub type Tx = UnboundedSender<axum::extract::ws::Message>;
@@ -62,7 +62,8 @@ pub fn handle_subscription(
     if parsed_sub_msg.exchanges.is_empty() {
         sender
             .unbounded_send(axum::extract::ws::Message::Text(
-                serde_json::json!({"error": "exchanges must contain at least 1 exchange"}).to_string(),
+                serde_json::json!({"error": "exchanges must contain at least 1 exchange"})
+                    .to_string(),
             ))
             .unwrap();
         return;
@@ -79,12 +80,9 @@ pub fn handle_subscription(
         None => String::from("50"),
     };
 
-
     let ws_endpoint: String = format!(
         "/ws/snapshot/{}?markets={}&depth_limit={}&interval_ms=300",
-        parsed_sub_msg.currency_pair,
-        markets,
-        depth_limit,
+        parsed_sub_msg.currency_pair, markets, depth_limit,
     );
 
     add_client_to_subscription(
