@@ -13,7 +13,8 @@ tokio = {version = "1.28.1", features = ["full"]}
 #tungstenite = { version = "0.19.0" }
 url = "2.3.1"
 axum = {version = "0.6.18", features = ["ws", "headers"]}
-serde = "1.0.163"
+serde = { version = "1.0.163", features = ["derive"] }
+serde_derive = "1.0"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 headers = "0.3"
 tracing = "0.1"
@@ -26,5 +27,7 @@ reqwest = "0.11.18"
 log = "0.4.19"
 env_logger = "0.10.0"
 argh = "0.1.10"
+phf = {version = "0.11.2", features = ["macros"]}
+serde_json = "1.0.107"
 
 
