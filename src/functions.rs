@@ -498,7 +498,7 @@ pub fn add_client_to_subscription(
     }
 }
 
-/// Actual websocket statemachine (one will be spawned per connection)
+/// Actual websocket state machine (one will be spawned per connection)
 // #[axum_macros::debug_handler]
 async fn axum_handle_socket(
     websocket: WebSocket,
