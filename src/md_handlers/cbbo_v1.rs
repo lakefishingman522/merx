@@ -1,7 +1,12 @@
-use crate::functions::{add_client_to_subscription, subscribe_to_market_data, ConnectionState};
+use crate::md_handlers::helper::cbag_market_to_exchange;
+use crate::{
+    functions::{add_client_to_subscription, subscribe_to_market_data, ConnectionState},
+    routes_config::MarketDataType,
+};
 use futures_channel::mpsc::UnboundedSender;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, net::SocketAddr};
+use tokio_tungstenite::tungstenite::Message;
 
 pub type Tx = UnboundedSender<axum::extract::ws::Message>;
 
@@ -11,7 +16,7 @@ struct SubscriptionMessage {
     size_filter: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct OrderLevel {
     exchange: String,
     level: u32,
@@ -20,7 +25,7 @@ struct OrderLevel {
     total_qty: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct LegacyCbboUpdate {
     // this is the form of the update received from cbag
     product: String,
@@ -46,6 +51,7 @@ pub fn handle_subscription(
     subscription_msg: String,
     cbag_uri: String,
     sender: Tx,
+    market_data_type: MarketDataType,
 ) {
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
         Ok(msg) => msg,
@@ -101,9 +107,37 @@ pub fn handle_subscription(
         &ws_endpoint,
         cbag_uri.clone(),
         sender,
+        market_data_type,
     );
 
-    subscribe_to_market_data(&ws_endpoint, connection_state.clone(), cbag_uri);
+    // subscribe_to_market_data(&ws_endpoint, connection_state.clone(), cbag_uri, );
 }
 
-pub fn transform_message() {}
+//TODO: change error to something more specific
+pub fn transform_message(message: Message) -> Result<Message, String> {
+    //parse message into LegacyCbboUpdate
+    let mut parsed_message: LegacyCbboUpdate = match serde_json::from_str(&message.to_string()) {
+        Ok(msg) => msg,
+        Err(e) => {
+            tracing::error!("Error parsing message: {}", e);
+            return Err(format!("Error parsing message: {}", e));
+        }
+    };
+
+    // convert cbag market names to exchange names
+    parsed_message.markets = parsed_message
+        .markets
+        .iter()
+        .map(|market| cbag_market_to_exchange(market))
+        .collect();
+
+    let transformed_message = match serde_json::to_string(&parsed_message) {
+        Ok(msg) => Message::Text(msg),
+        Err(e) => {
+            tracing::error!("Error serializing message: {}", e);
+            return Err(format!("Error serializing message: {}", e));
+        }
+    };
+
+    Ok(transformed_message)
+}
