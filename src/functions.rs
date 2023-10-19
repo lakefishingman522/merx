@@ -206,7 +206,6 @@ pub fn subscribe_to_market_data(
                         // transform the raw message in accordance with its market data type
                         let message_transform_result: Result<Message, String> =
                             match market_data_type {
-                                // match with all marketdattype
                                 MarketDataType::CbboV1 => cbbo_v1::transform_message(message_text),
                                 MarketDataType::MarketDepthV1 => {
                                     market_depth_v1::transform_message(message_text)
