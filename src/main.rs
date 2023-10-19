@@ -1,25 +1,37 @@
 use argh::FromArgs;
 use axum::extract::Extension;
+use axum::routing::post;
 use axum::{routing::get, Router};
-use std::{collections::HashMap, net::SocketAddr, sync::RwLock};
+use std::{net::SocketAddr, sync::RwLock};
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
+
+// use cade_md_proxy::subscribe_to_market_data;
+// mod functions;
 
 mod auth;
 mod functions;
 mod md_handlers;
 mod routes_config;
 
-use functions::*;
+// import functions.rs
+use merckx::functions::{
+    axum_ws_handler, fallback, forward_request, root, ConnectionState, ConnectionStateStruct, URIs,
+};
+
+use merckx::md_handlers::rest_cost_calculator_v1;
 
 #[derive(FromArgs)]
-/// A Market Data Proxy for CBAG market data requests
+/// Merckx is a market data handler
 struct Args {
     #[argh(option, default = "String::from(\"none\")")]
     /// the uri for the cbag. Can be cbag load balancer
     cbag_uri: String,
 
+    #[argh(option, default = "String::from(\"none\")")]
+    /// the uri for the authentication server. This is normally portal.coinroutes.com
+    auth_uri: String,
     /// optional: specify port for gRPC server. 50051 by default
     #[argh(option, default = "50051")]
     port: u16,
@@ -38,17 +50,27 @@ async fn main() {
     if args.cbag_uri == "none" {
         panic!("cbag-uri is required")
     }
-    let cbag_uri = args.cbag_uri.clone();
+    if args.auth_uri == "none" {
+        panic!("auth-uri is required")
+    }
+    let uris = URIs {
+        cbag_uri: args.cbag_uri.clone(),
+        auth_uri: args.auth_uri.clone(),
+    };
+    // let cbag_uri = args.cbag_uri.clone();
+    // let auth_uri = args.auth_uri.clone();
     let port = args.port;
 
-    info!("Running Market Data Proxy");
-    info!("CBAG Uri  : {}", cbag_uri);
+    info!("Running Merckx");
+    info!("CBAG Uri  : {}", uris.cbag_uri);
+    info!("Auth Server Uri  : {}", uris.auth_uri);
     info!("Proxy port: {}", port);
 
     // connection state which will hold a state of all subscriptions
     // and their respective clients
     let connection_state = ConnectionState::new(RwLock::new(ConnectionStateStruct::new()));
-    let cbag_uri_clone = cbag_uri.clone();
+    // will hold the number of subscriptions per client. Useful for knowing
+    // when to disconnect from the websocket session
 
     // build our application with a route
     let app = Router::new()
@@ -56,18 +78,24 @@ async fn main() {
         .route("/", get(root))
         // REST endpoints
         .route("/version", get(forward_request))
-        .route("/book/:symbol", get(forward_request))
-        .route("/properties/:symbol", get(forward_request))
-        .route("/legacy-cbbo/:symbol", get(forward_request))
-        .route("/cost-calculator/:symbol", get(forward_request))
+        // .route("/book/:symbol", get(forward_request))
+        // .route("/properties/:symbol", get(forward_request))
+        // .route("/legacy-cbbo/:symbol", get(forward_request))
+        // .route("/cost-calculator/:symbol", get(forward_request))
+        .route(
+            "/api/cost_calculator",
+            post(rest_cost_calculator_v1::handle_request),
+        )
         // WS Endpoints
-        .route("/ws/snapshot/:subscription", get(axum_ws_handler))
-        .route("/ws/bookstats/:symbol", get(axum_ws_handler))
-        .route("/ws/legacy-cbbo/:symbol", get(axum_ws_handler))
-        .route("/ws/cost-calculator/:symbol", get(axum_ws_handler))
+        // .route("/ws/snapshot/:subscription", get(axum_ws_handler))
+        // .route("/ws/bookstats/:symbol", get(axum_ws_handler))
+        // .route("/ws/legacy-cbbo/:symbol", get(axum_ws_handler))
+        // .route("/ws/cost-calculator/:symbol", get(axum_ws_handler))
+        .route("/api/streaming/cbbo", get(axum_ws_handler)) //TODO: slash helper
+        .route("/api/streaming/market_depth", get(axum_ws_handler)) //TODO: slash helper
         .fallback(fallback)
         .with_state(connection_state.clone())
-        .layer(Extension(cbag_uri_clone))
+        .layer(Extension(uris))
         // logging so we can see whats going on
         .layer(
             TraceLayer::new_for_http()
@@ -79,7 +107,7 @@ async fn main() {
     // axum::serve(listener, app).await.unwrap();
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    info!("Starting Axum Server on {}", addr);
+    info!("Starting Merckx Server on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
