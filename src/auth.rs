@@ -12,7 +12,6 @@ pub async fn authenticate_token(auth_uri: &str, token: &str) -> Result<(), ()> {
     let auth_address = format!("https://{}/api/exchanges", auth_uri);
     println!("auth address: {}", auth_address);
 
-
     let res = client
         .get(auth_address)
         .header("Authorization", format!("Token {}", token))
@@ -27,7 +26,11 @@ pub async fn authenticate_token(auth_uri: &str, token: &str) -> Result<(), ()> {
                 Ok(())
             }
             _ => {
-                println!("auth failed for token {} with status {}", token, res.status());
+                println!(
+                    "auth failed for token {} with status {}",
+                    token,
+                    res.status()
+                );
                 Err(())
             }
         },

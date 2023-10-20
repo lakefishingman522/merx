@@ -620,7 +620,6 @@ async fn axum_handle_socket(
 
     // this is unused but good to log incase there are incoming messages
     let recv_task = incoming.try_for_each(|msg| {
-
         // log message if we are unable to convert it to text, else long an error
         // if we are unable to convert it to text
         // let msg_text = match msg.to_text() {
@@ -649,8 +648,10 @@ async fn axum_handle_socket(
                 match recv_task_tx.clone().unbounded_send(pong_msg) {
                     Ok(_) => (),
                     Err(_try_send_error) => {
-                        warn!("Sending error, client likely disconnected. {}",
-                        client_address);
+                        warn!(
+                            "Sending error, client likely disconnected. {}",
+                            client_address
+                        );
                     }
                 }
             }
