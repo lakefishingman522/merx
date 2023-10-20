@@ -33,8 +33,8 @@ struct Args {
     #[argh(option, default = "String::from(\"none\")")]
     auth_uri: String,
 
-    /// optional: specify port for gRPC server. 50051 by default
-    #[argh(option, default = "50051")]
+    /// optional: specify port for gRPC server. 5050 by default
+    #[argh(option, default = "5050")]
     port: u16,
 
     /// optional: if you want to run merckx in production mode. Will serve on 0.0.0.0
