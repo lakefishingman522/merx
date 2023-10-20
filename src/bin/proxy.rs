@@ -6,8 +6,6 @@ use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-
-
 use merckx::functions::*;
 
 #[derive(FromArgs)]
