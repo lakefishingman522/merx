@@ -25,16 +25,21 @@ use merckx::md_handlers::rest_cost_calculator_v1;
 #[derive(FromArgs)]
 /// Merckx is a market data handler
 struct Args {
-    #[argh(option, default = "String::from(\"none\")")]
     /// the uri for the cbag. Can be cbag load balancer
+    #[argh(option, default = "String::from(\"none\")")]
     cbag_uri: String,
 
-    #[argh(option, default = "String::from(\"none\")")]
     /// the uri for the authentication server. This is normally portal.coinroutes.com
+    #[argh(option, default = "String::from(\"none\")")]
     auth_uri: String,
+
     /// optional: specify port for gRPC server. 50051 by default
     #[argh(option, default = "50051")]
     port: u16,
+
+    /// optional: if you want to run merckx in production mode. Will serve on 0.0.0.0
+    #[argh(switch)]
+    prod: bool,
 }
 
 #[tokio::main]
@@ -106,7 +111,12 @@ async fn main() {
     // let listener = tokio::net::TcpListener::bind("0.0.0.0:9089").await.unwrap();
     // axum::serve(listener, app).await.unwrap();
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = if args.prod {
+        SocketAddr::from(([0, 0, 0, 0], port))
+    } else {
+        SocketAddr::from(([127, 0, 0, 1], port))
+    };
+
     info!("Starting Merckx Server on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
