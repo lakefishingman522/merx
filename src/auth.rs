@@ -15,6 +15,7 @@ pub async fn authenticate_token(auth_uri: &str, token: &str) -> Result<(), ()> {
     let res = client
         .get(auth_address)
         .header("Authorization", format!("Token {}", token))
+        .header(reqwest::header::USER_AGENT, "merckx")
         .send()
         .await;
 
@@ -25,7 +26,11 @@ pub async fn authenticate_token(auth_uri: &str, token: &str) -> Result<(), ()> {
                 Ok(())
             }
             _ => {
-                println!("auth failed");
+                println!(
+                    "auth failed for token {} with status {}",
+                    token,
+                    res.status()
+                );
                 Err(())
             }
         },

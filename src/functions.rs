@@ -161,6 +161,10 @@ pub fn subscribe_to_market_data(
 
                 //remove the subscription from the connection state
                 locked_state.subscription_state.remove(&ws_endpoint);
+                info!(
+                    "Number of subscriptions left: {}",
+                    locked_state.subscription_state.len()
+                );
                 break;
             }
             let result = match timeout(Duration::from_secs(3), connect_async(url.clone())).await {
@@ -616,13 +620,21 @@ async fn axum_handle_socket(
 
     // this is unused but good to log incase there are incoming messages
     let recv_task = incoming.try_for_each(|msg| {
-        info!(
-            "Received a message from {}: {}",
-            client_address,
-            msg.to_text().unwrap()
-        );
-
-        info!("The client address is {}", &client_address);
+        // log message if we are unable to convert it to text, else long an error
+        // if we are unable to convert it to text
+        // let msg_text = match msg.to_text() {
+        //     Ok(msg_text) => {
+        //         info!(
+        //             "Received a message from {}: {}",
+        //             client_address,
+        //             msg_text
+        //         );
+        //     },
+        //     Err(_err) => {
+        //         error!("Unable to convert message to text from {}", client_address);
+        //         // return future::ok(());
+        //     }
+        // };
 
         match msg {
             axum::extract::ws::Message::Close(_msg) => {
@@ -630,10 +642,21 @@ async fn axum_handle_socket(
                 // return future::ok(())
             }
             axum::extract::ws::Message::Ping(_msg) => {
-                info!("{} Received a ping frame", &client_address);
+                // info!("{} Received a ping frame", &client_address);
+                // send back a pong
+                let pong_msg = axum_Message::Pong(_msg);
+                match recv_task_tx.clone().unbounded_send(pong_msg) {
+                    Ok(_) => (),
+                    Err(_try_send_error) => {
+                        warn!(
+                            "Sending error, client likely disconnected. {}",
+                            client_address
+                        );
+                    }
+                }
             }
             axum::extract::ws::Message::Pong(_msg) => {
-                info!("{} Received a pong frame", &client_address);
+                // info!("{} Received a pong frame", &client_address);
             }
             axum::extract::ws::Message::Text(msg_str) => {
                 info!("{} Received a text frame", &client_address);
