@@ -742,6 +742,7 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "headers",
+ "lazy_static",
  "log",
  "phf",
  "reqwest",
