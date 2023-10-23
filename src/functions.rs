@@ -7,12 +7,16 @@ use std::{
 
 use futures::future;
 use futures::stream::TryStreamExt;
-use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
-use futures_util::{pin_mut, StreamExt};
+use futures_util::{pin_mut, StreamExt, SinkExt};
+// use futures_util::{pin_mut};
+// use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
+// use futures_channel::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 // Import the TryStreamExt trait
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, timeout, Duration};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use lazy_static::lazy_static;
 
 // for axum
 use axum::{body::Body, extract::ws::Message as axum_Message, http::Uri};
@@ -40,12 +44,19 @@ use crate::{
     auth::authenticate_token, md_handlers::rest_cost_calculator_v1::RestCostCalculatorV1RequestBody,
 };
 
-pub type Tx = UnboundedSender<axum::extract::ws::Message>;
+pub type Tx = Sender<axum::extract::ws::Message>;
 // pub type ConnectionState = Arc<RwLock<HashMap<String, HashMap<SocketAddr, Tx>>>>;
 // pub type SubscriptionCount = Arc<RwLock<HashMap<SocketAddr, u32>>>;
 
 pub type SubscriptionState = HashMap<String, HashMap<SocketAddr, Tx>>;
 pub type SubscriptionCount = HashMap<SocketAddr, u32>;
+
+
+
+lazy_static! {
+    // bound for the number of messages to hold in a channel
+    static ref SENDER_BOUND: usize = 500;
+}
 
 #[derive(Default)]
 pub struct ConnectionStateStruct {
@@ -131,7 +142,7 @@ pub fn subscribe_to_market_data(
                     // }));
                     // info!("Sending close frame");
 
-                    // match recp.unbounded_send(ms) {
+                    // match recp.send(ms) {
                     //     Ok(_) => (),
                     //     Err(_try_send_error) => {
                     //         warn!("Sending error, client likely disconnected.");
@@ -253,10 +264,10 @@ pub fn subscribe_to_market_data(
                             number_of_active_listeners = active_listeners.len();
                             for recp in active_listeners {
                                 let ms = from_tungstenite(message_text.clone()).unwrap();
-                                match recp.unbounded_send(ms) {
+                                match recp.try_send(ms) {
                                     Ok(_) => (),
                                     Err(_try_send_error) => {
-                                        warn!("Sending error, client likely disconnected.");
+                                        // warn!("Sending error, client likely disconnected.");
                                     }
                                 }
                             }
@@ -437,12 +448,13 @@ pub async fn axum_ws_handler(
     })
 }
 
+
 pub fn add_client_to_subscription(
     connection_state: &ConnectionState,
     client_address: &SocketAddr,
     request_endpoint_str: &String,
     cbag_uri: String,
-    tx: UnboundedSender<axum::extract::ws::Message>,
+    mut tx: Sender<axum::extract::ws::Message>,
     market_data_type: MarketDataType,
 ) {
     {
@@ -514,10 +526,10 @@ async fn axum_handle_socket(
     subscription_type: &SubscriptionType,
 ) {
     // added by karun
-    let (tx, rx): (
-        UnboundedSender<axum_Message>,
-        UnboundedReceiver<axum_Message>,
-    ) = unbounded();
+    let (mut tx, mut rx): (
+        Sender<axum_Message>,
+        Receiver<axum_Message>,
+    ) = channel(*SENDER_BOUND);
     // let (tx, rx) = unbounded();
 
     let thread_id = thread::current().id();
@@ -526,7 +538,7 @@ async fn axum_handle_socket(
     let request_endpoint_str = request_endpoint.to_string();
     let recv_task_tx = tx.clone();
     let recv_task_cbag_uri = cbag_uri.clone();
-    let (outgoing, incoming) = websocket.split();
+    let (mut outgoing, incoming) = websocket.split();
 
     // add the client to the connection state. If the url isn't already subscribed
     // to, we need to spawn a process to subscribe to the url. This has to be done
@@ -645,7 +657,7 @@ async fn axum_handle_socket(
                 // info!("{} Received a ping frame", &client_address);
                 // send back a pong
                 let pong_msg = axum_Message::Pong(_msg);
-                match recv_task_tx.clone().unbounded_send(pong_msg) {
+                match recv_task_tx.clone().try_send(pong_msg) {
                     Ok(_) => (),
                     Err(_try_send_error) => {
                         warn!(
@@ -768,7 +780,20 @@ async fn axum_handle_socket(
     // }
     // });
 
-    let receive_from_others = rx.map(Ok).forward(outgoing);
+    // let receive_from_others = rx.map(Ok).forward(outgoing);
+
+    let receive_from_others = async {
+        while let Some(msg) = rx.recv().await {
+            match outgoing.send(msg).await {
+                Ok(_) => {},
+                Err(_try_send_error) => {
+                    warn!("Sending error, client likely disconnected.");
+                    break
+                }
+            }
+        }
+    };
+
 
     pin_mut!(
         check_subscription_still_active,

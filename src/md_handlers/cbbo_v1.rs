@@ -3,12 +3,13 @@ use crate::{
     functions::{add_client_to_subscription, subscribe_to_market_data, ConnectionState},
     routes_config::MarketDataType,
 };
-use futures_channel::mpsc::UnboundedSender;
+// use futures_channel::mpsc::Sender;
+use tokio::sync::mpsc::Sender;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, net::SocketAddr};
 use tokio_tungstenite::tungstenite::Message;
 
-pub type Tx = UnboundedSender<axum::extract::ws::Message>;
+pub type Tx = Sender<axum::extract::ws::Message>;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SubscriptionMessage {
@@ -50,7 +51,7 @@ pub fn handle_subscription(
     connection_state: &ConnectionState,
     subscription_msg: String,
     cbag_uri: String,
-    sender: Tx,
+    mut sender: Tx,
     market_data_type: MarketDataType,
 ) {
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
@@ -58,7 +59,7 @@ pub fn handle_subscription(
         Err(e) => {
             //TODO: remove the unwrap from here
             sender
-                .unbounded_send(axum::extract::ws::Message::Text(
+                .try_send(axum::extract::ws::Message::Text(
                     serde_json::json!({"error": "unable to parse subscription message"})
                         .to_string(),
                 ))
@@ -72,7 +73,7 @@ pub fn handle_subscription(
         Ok(size_filter) => size_filter,
         Err(e) => {
             sender
-                .unbounded_send(axum::extract::ws::Message::Text(
+                .try_send(axum::extract::ws::Message::Text(
                     serde_json::json!({"error": "size_filter must be a number"}).to_string(),
                 ))
                 .unwrap();
@@ -84,7 +85,7 @@ pub fn handle_subscription(
     //validate that size_filter is positive
     if parsed_size_filter < 0.0 {
         sender
-            .unbounded_send(axum::extract::ws::Message::Text(
+            .try_send(axum::extract::ws::Message::Text(
                 serde_json::json!({"error": "size_filter must be greater than or equal to 0"})
                     .to_string(),
             ))
