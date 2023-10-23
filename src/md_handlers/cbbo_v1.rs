@@ -1,11 +1,11 @@
 use crate::md_handlers::helper::cbag_market_to_exchange;
 use crate::{
-    functions::{add_client_to_subscription, subscribe_to_market_data},
     routes_config::MarketDataType,
-    state::ConnectionState,
+    state::ConnectionStateTwo,
 };
 // use futures_channel::mpsc::Sender;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::{collections::HashMap, net::SocketAddr};
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::tungstenite::Message;
@@ -49,7 +49,7 @@ struct LegacyCbboUpdate {
 //TODO should this implement a trait?
 pub fn handle_subscription(
     client_address: &SocketAddr,
-    connection_state: &ConnectionState,
+    connection_state: &ConnectionStateTwo,
     subscription_msg: String,
     cbag_uri: String,
     mut sender: Tx,
@@ -103,13 +103,13 @@ pub fn handle_subscription(
         "merckx"
     );
 
-    add_client_to_subscription(
-        connection_state,
+    connection_state.add_client_to_subscription(
         client_address,
         &ws_endpoint,
         cbag_uri.clone(),
         sender,
         market_data_type,
+        Arc::clone(&connection_state),
     );
 
     // subscribe_to_market_data(&ws_endpoint, connection_state.clone(), cbag_uri, );

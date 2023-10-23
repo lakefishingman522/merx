@@ -79,11 +79,20 @@ impl ConnectionStateStructTwo {
     pub fn add_client_to_subscription(
         &self,
         client_address: &SocketAddr,
-        subscription: &str,
+        subscription: &str, //this is the endpoint str
+        cbag_uri: String,
         sender: Tx,
+        market_data_type: MarketDataType,
+        connection_state: ConnectionStateTwo,
     ) -> Result<(), String> {
         let mut subscription_state = self.subscription_state.write().unwrap();
         let mut subscription_count = self.subscription_count.write().unwrap();
+
+        let already_subscribed = if subscription_state.contains_key(subscription) {
+            true
+        } else {
+            false
+        };
 
         if let Some(subscription_clients) = subscription_state.get_mut(subscription) {
             if subscription_clients.contains_key(client_address) {
@@ -101,6 +110,15 @@ impl ConnectionStateStructTwo {
             *count += 1;
         } else {
             subscription_count.insert(*client_address, 1);
+        }
+
+        if !already_subscribed {
+            let _handle = subscribe_to_market_data(
+                &subscription,
+                connection_state,
+                cbag_uri,
+                market_data_type,
+            );
         }
         Ok(())
     }
@@ -138,29 +156,38 @@ impl ConnectionStateStructTwo {
         Ok(())
     }
 
-    // pub fn get_active_listeners(
-    //     &self,
-    //     subscription: &str,
-    // ) -> Result<Vec<UnboundedSender<axum::extract::ws::Message>>, String> {
-    //     let subscription_state = self.subscription_state.read().unwrap();
+    pub fn remove_client_from_state(&self, &client_address: &SocketAddr){
+        let mut subscription_state = self.subscription_state.write().unwrap();
+        let mut subscription_count = self.subscription_count.write().unwrap();
 
-    //     if let Some(subscription_clients) = subscription_state.get(subscription) {
-    //         let mut senders = Vec::new();
-    //         for (_, sender) in subscription_clients {
-    //             senders.push(sender.clone());
-    //         }
-    //         Ok(senders)
-    //     } else {
-    //         Err("Subscription does not exist".to_string())
-    //     }
-    // }
-    // )
+        // remove client from subscription state
+        for (_, subscription_clients) in subscription_state.iter_mut() {
+            if subscription_clients.contains_key(&client_address) {
+                subscription_clients.remove(&client_address);
+            }
+        }
+
+        // and from the count
+        subscription_count.remove(&client_address);
+    }
+
+    pub fn is_client_still_active(&self, &client_address: &SocketAddr) -> bool {
+        let subscription_count = self.subscription_count.read().unwrap();
+        if let Some(count) = subscription_count.get(&client_address) {
+            if count > &0 {
+                return true;
+            }
+        }
+        false
+    }
+
+
 }
 
 #[allow(unused_assignments)]
 pub fn subscribe_to_market_data(
     ws_endpoint: &str,
-    connection_state: ConnectionState,
+    connection_state: ConnectionStateTwo,
     cbag_uri: String,
     market_data_type: MarketDataType,
 ) -> JoinHandle<()> {
@@ -182,8 +209,9 @@ pub fn subscribe_to_market_data(
                     "Unable to connect, closing down subscription {}",
                     &ws_endpoint
                 );
-                let mut locked_state = connection_state.write().unwrap(); //TODO: maybe only need a read lock when sending out the messages
-                let listener_hash_map = locked_state.subscription_state.get(&ws_endpoint);
+                let mut locked_subscription_state = connection_state.subscription_state.write().unwrap(); //TODO: maybe only need a read lock when sending out the messages
+                let mut locked_subscription_count = connection_state.subscription_count.write().unwrap();
+                let listener_hash_map = locked_subscription_state.get(&ws_endpoint);
                 let active_listeners = match listener_hash_map {
                     Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
                     None => {
@@ -213,16 +241,15 @@ pub fn subscribe_to_market_data(
 
                 // clean up subscription counts for those clients who were connected
                 // for this subscription
-                let client_subscriptions = locked_state
-                    .subscription_state
+                let client_subscriptions = locked_subscription_state
                     .get(&ws_endpoint)
                     .unwrap()
                     .clone();
                 for (client_address, _) in client_subscriptions.iter() {
-                    if let Some(count) = locked_state.subscription_count.get_mut(client_address) {
+                    if let Some(count) = locked_subscription_count.get_mut(client_address) {
                         *count -= 1;
                         if *count == 0 {
-                            locked_state.subscription_count.remove(client_address);
+                            locked_subscription_count.remove(client_address);
                             error!(
                                 "Removing the subscription count for {} as it is 0",
                                 client_address
@@ -232,10 +259,10 @@ pub fn subscribe_to_market_data(
                 }
 
                 //remove the subscription from the connection state
-                locked_state.subscription_state.remove(&ws_endpoint);
+                locked_subscription_state.remove(&ws_endpoint);
                 info!(
                     "Number of subscriptions left: {}",
-                    locked_state.subscription_state.len()
+                    locked_subscription_state.len()
                 );
                 break;
             }
@@ -307,9 +334,9 @@ pub fn subscribe_to_market_data(
                         let number_of_active_listeners: usize;
                         // this is a read lock only
                         {
-                            let locked_state = connection_state.read().unwrap();
+                            let locked_subscription_state = connection_state.subscription_state.read().unwrap();
                             let listener_hash_map =
-                                locked_state.subscription_state.get(&ws_endpoint);
+                                locked_subscription_state.get(&ws_endpoint);
                             let active_listeners = match listener_hash_map {
                                 Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
                                 None => {
@@ -335,11 +362,11 @@ pub fn subscribe_to_market_data(
                         }
 
                         if number_of_active_listeners == 0 {
-                            let mut locked_state = connection_state.write().unwrap();
+                            let mut locked_subscription_state = connection_state.subscription_state.write().unwrap();
                             // check again there are no new clients for the subsctiption
                             // client_subscriptions = connection_state_lock.
                             let listener_hash_map =
-                                locked_state.subscription_state.get(&ws_endpoint);
+                                locked_subscription_state.get(&ws_endpoint);
                             let active_listeners = match listener_hash_map {
                                 Some(listeners) => listeners,
                                 None => {
@@ -354,7 +381,7 @@ pub fn subscribe_to_market_data(
                             no more listeners",
                                     &ws_endpoint
                                 );
-                                locked_state.subscription_state.remove(&ws_endpoint);
+                                locked_subscription_state.remove(&ws_endpoint);
                                 closing_down = true;
                                 break;
                             }

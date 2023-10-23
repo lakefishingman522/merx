@@ -35,7 +35,7 @@ use tracing::{error, info, warn};
 
 use crate::md_handlers::{cbbo_v1, market_depth_v1};
 use crate::routes_config::{MarketDataType, SubscriptionType, ROUTES, SUB_TYPE};
-use crate::state::ConnectionState;
+use crate::state::ConnectionStateTwo;
 use crate::{
     auth::authenticate_token, md_handlers::rest_cost_calculator_v1::RestCostCalculatorV1RequestBody,
 };
@@ -90,224 +90,224 @@ fn from_tungstenite(message: Message) -> Option<axum::extract::ws::Message> {
     }
 }
 
-#[allow(unused_assignments)]
-pub fn subscribe_to_market_data(
-    ws_endpoint: &str,
-    connection_state: ConnectionState,
-    cbag_uri: String,
-    market_data_type: MarketDataType,
-) -> JoinHandle<()> {
-    info!("Starting a new subscription to {}", ws_endpoint);
-    //TODO: add this as a parameter
-    let ws_endpoint = ws_endpoint.to_owned();
-    let full_url = format!("ws://{}{}", cbag_uri, ws_endpoint);
+// #[allow(unused_assignments)]
+// pub fn subscribe_to_market_data(
+//     ws_endpoint: &str,
+//     connection_state: ConnectionState,
+//     cbag_uri: String,
+//     market_data_type: MarketDataType,
+// ) -> JoinHandle<()> {
+//     info!("Starting a new subscription to {}", ws_endpoint);
+//     //TODO: add this as a parameter
+//     let ws_endpoint = ws_endpoint.to_owned();
+//     let full_url = format!("ws://{}{}", cbag_uri, ws_endpoint);
 
-    tokio::spawn(async move {
-        info!("Attempting to connect to {}", &ws_endpoint);
-        let url = url::Url::parse(&full_url).unwrap();
-        let mut closing_down = false;
-        let mut consecutive_errors = 0;
-        // TODO: after x number of timeouts, should check if clients are still connected
-        loop {
-            if consecutive_errors >= 5 {
-                // disconnect from all sockets
-                warn!(
-                    "Unable to connect, closing down subscription {}",
-                    &ws_endpoint
-                );
-                let mut locked_state = connection_state.write().unwrap(); //TODO: maybe only need a read lock when sending out the messages
-                let listener_hash_map = locked_state.subscription_state.get(&ws_endpoint);
-                let active_listeners = match listener_hash_map {
-                    Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
-                    None => {
-                        info!("Subscription {} no longer required", &ws_endpoint);
-                        closing_down = true;
-                        break;
-                    }
-                };
-                // warn!("Disconnecting clients {}", active_listeners.len());
-                //TODO: send something about the subscription here if it wasn't valid
-                for recp in active_listeners {
-                    // send a message that the subscription was not valid
+//     tokio::spawn(async move {
+//         info!("Attempting to connect to {}", &ws_endpoint);
+//         let url = url::Url::parse(&full_url).unwrap();
+//         let mut closing_down = false;
+//         let mut consecutive_errors = 0;
+//         // TODO: after x number of timeouts, should check if clients are still connected
+//         loop {
+//             if consecutive_errors >= 5 {
+//                 // disconnect from all sockets
+//                 warn!(
+//                     "Unable to connect, closing down subscription {}",
+//                     &ws_endpoint
+//                 );
+//                 let mut locked_state = connection_state.write().unwrap(); //TODO: maybe only need a read lock when sending out the messages
+//                 let listener_hash_map = locked_state.subscription_state.get(&ws_endpoint);
+//                 let active_listeners = match listener_hash_map {
+//                     Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
+//                     None => {
+//                         info!("Subscription {} no longer required", &ws_endpoint);
+//                         closing_down = true;
+//                         break;
+//                     }
+//                 };
+//                 // warn!("Disconnecting clients {}", active_listeners.len());
+//                 //TODO: send something about the subscription here if it wasn't valid
+//                 for recp in active_listeners {
+//                     // send a message that the subscription was not valid
 
-                    // let ms = axum_Message::Close(Some(CloseFrame {
-                    //     code: 1001,
-                    //     reason: "Requested endpoint not found".into(),
-                    // }));
-                    // info!("Sending close frame");
+//                     // let ms = axum_Message::Close(Some(CloseFrame {
+//                     //     code: 1001,
+//                     //     reason: "Requested endpoint not found".into(),
+//                     // }));
+//                     // info!("Sending close frame");
 
-                    // match recp.send(ms) {
-                    //     Ok(_) => (),
-                    //     Err(_try_send_error) => {
-                    //         warn!("Sending error, client likely disconnected.");
-                    //     }
-                    // }
-                }
+//                     // match recp.send(ms) {
+//                     //     Ok(_) => (),
+//                     //     Err(_try_send_error) => {
+//                     //         warn!("Sending error, client likely disconnected.");
+//                     //     }
+//                     // }
+//                 }
 
-                // clean up subscription counts for those clients who were connected
-                // for this subscription
-                let client_subscriptions = locked_state
-                    .subscription_state
-                    .get(&ws_endpoint)
-                    .unwrap()
-                    .clone();
-                for (client_address, _) in client_subscriptions.iter() {
-                    if let Some(count) = locked_state.subscription_count.get_mut(client_address) {
-                        *count -= 1;
-                        if *count == 0 {
-                            locked_state.subscription_count.remove(client_address);
-                            error!(
-                                "Removing the subscription count for {} as it is 0",
-                                client_address
-                            );
-                        }
-                    }
-                }
+//                 // clean up subscription counts for those clients who were connected
+//                 // for this subscription
+//                 let client_subscriptions = locked_state
+//                     .subscription_state
+//                     .get(&ws_endpoint)
+//                     .unwrap()
+//                     .clone();
+//                 for (client_address, _) in client_subscriptions.iter() {
+//                     if let Some(count) = locked_state.subscription_count.get_mut(client_address) {
+//                         *count -= 1;
+//                         if *count == 0 {
+//                             locked_state.subscription_count.remove(client_address);
+//                             error!(
+//                                 "Removing the subscription count for {} as it is 0",
+//                                 client_address
+//                             );
+//                         }
+//                     }
+//                 }
 
-                //remove the subscription from the connection state
-                locked_state.subscription_state.remove(&ws_endpoint);
-                info!(
-                    "Number of subscriptions left: {}",
-                    locked_state.subscription_state.len()
-                );
-                break;
-            }
-            let result = match timeout(Duration::from_secs(3), connect_async(url.clone())).await {
-                Ok(response) => response,
-                Err(err) => {
-                    // Error occurred or connection timed out
-                    error!("Timeout Error: {:?}", err);
-                    consecutive_errors += 1;
-                    continue;
-                }
-            };
+//                 //remove the subscription from the connection state
+//                 locked_state.subscription_state.remove(&ws_endpoint);
+//                 info!(
+//                     "Number of subscriptions left: {}",
+//                     locked_state.subscription_state.len()
+//                 );
+//                 break;
+//             }
+//             let result = match timeout(Duration::from_secs(3), connect_async(url.clone())).await {
+//                 Ok(response) => response,
+//                 Err(err) => {
+//                     // Error occurred or connection timed out
+//                     error!("Timeout Error: {:?}", err);
+//                     consecutive_errors += 1;
+//                     continue;
+//                 }
+//             };
 
-            let (ws_stream, _) = match result {
-                Ok(whatever) => whatever,
-                Err(err) => {
-                    error!("Connection Error connecting to {}: {:?}", &ws_endpoint, err);
-                    consecutive_errors += 1;
-                    sleep(Duration::from_millis(500)).await;
-                    continue;
-                }
-            };
+//             let (ws_stream, _) = match result {
+//                 Ok(whatever) => whatever,
+//                 Err(err) => {
+//                     error!("Connection Error connecting to {}: {:?}", &ws_endpoint, err);
+//                     consecutive_errors += 1;
+//                     sleep(Duration::from_millis(500)).await;
+//                     continue;
+//                 }
+//             };
 
-            info!(
-                "WebSocket handshake for {} has been successfully completed",
-                &ws_endpoint
-            );
-            let (_write, mut read) = ws_stream.split();
-            consecutive_errors = 0;
-            loop {
-                let message = read.next().await;
-                let msg = match message {
-                    Some(msg) => msg,
-                    None => {
-                        error!(
-                            "Unable to read message, restarting subscription {}",
-                            ws_endpoint
-                        );
-                        break;
-                    }
-                };
-                match msg {
-                    Ok(message_text) => {
-                        // transform the raw message in accordance with its market data type
-                        let message_transform_result: Result<Message, String> =
-                            match market_data_type {
-                                MarketDataType::CbboV1 => cbbo_v1::transform_message(message_text),
-                                MarketDataType::MarketDepthV1 => {
-                                    market_depth_v1::transform_message(message_text)
-                                }
-                                MarketDataType::Direct => Ok(message_text),
-                                MarketDataType::RestCostCalculatorV1 => {
-                                    Err("Unexpected Market Data Type".into())
-                                }
-                            };
+//             info!(
+//                 "WebSocket handshake for {} has been successfully completed",
+//                 &ws_endpoint
+//             );
+//             let (_write, mut read) = ws_stream.split();
+//             consecutive_errors = 0;
+//             loop {
+//                 let message = read.next().await;
+//                 let msg = match message {
+//                     Some(msg) => msg,
+//                     None => {
+//                         error!(
+//                             "Unable to read message, restarting subscription {}",
+//                             ws_endpoint
+//                         );
+//                         break;
+//                     }
+//                 };
+//                 match msg {
+//                     Ok(message_text) => {
+//                         // transform the raw message in accordance with its market data type
+//                         let message_transform_result: Result<Message, String> =
+//                             match market_data_type {
+//                                 MarketDataType::CbboV1 => cbbo_v1::transform_message(message_text),
+//                                 MarketDataType::MarketDepthV1 => {
+//                                     market_depth_v1::transform_message(message_text)
+//                                 }
+//                                 MarketDataType::Direct => Ok(message_text),
+//                                 MarketDataType::RestCostCalculatorV1 => {
+//                                     Err("Unexpected Market Data Type".into())
+//                                 }
+//                             };
 
-                        let message_text = match message_transform_result {
-                            Ok(message) => message,
-                            Err(err) => {
-                                error!("Error transforming message: {}", err);
-                                continue;
-                            }
-                        };
+//                         let message_text = match message_transform_result {
+//                             Ok(message) => message,
+//                             Err(err) => {
+//                                 error!("Error transforming message: {}", err);
+//                                 continue;
+//                             }
+//                         };
 
-                        // let data = message_text.clone().into_data();
-                        // let data = msg.clone().into_data();
-                        // tokio::io::stdout().write_all(&data).await.unwrap();
+//                         // let data = message_text.clone().into_data();
+//                         // let data = msg.clone().into_data();
+//                         // tokio::io::stdout().write_all(&data).await.unwrap();
 
-                        let number_of_active_listeners: usize;
-                        // this is a read lock only
-                        {
-                            let locked_state = connection_state.read().unwrap();
-                            let listener_hash_map =
-                                locked_state.subscription_state.get(&ws_endpoint);
-                            let active_listeners = match listener_hash_map {
-                                Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
-                                None => {
-                                    info!("subscription no longer required");
-                                    return;
-                                    //todo quite this stream, no longer require
-                                }
-                            };
-                            // when there are no more clients subscribed to this ws subscription,
-                            // we can close in a write lock to avoid race conditions agains
-                            // new clients subscriptions that might come in whilst the
-                            // subscription is being removed from the connection state
-                            number_of_active_listeners = active_listeners.len();
-                            for recp in active_listeners {
-                                let ms = from_tungstenite(message_text.clone()).unwrap();
-                                match recp.try_send(ms) {
-                                    Ok(_) => (),
-                                    Err(_try_send_error) => {
-                                        // warn!("Sending error, client likely disconnected.");
-                                    }
-                                }
-                            }
-                        }
+//                         let number_of_active_listeners: usize;
+//                         // this is a read lock only
+//                         {
+//                             let locked_state = connection_state.read().unwrap();
+//                             let listener_hash_map =
+//                                 locked_state.subscription_state.get(&ws_endpoint);
+//                             let active_listeners = match listener_hash_map {
+//                                 Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
+//                                 None => {
+//                                     info!("subscription no longer required");
+//                                     return;
+//                                     //todo quite this stream, no longer require
+//                                 }
+//                             };
+//                             // when there are no more clients subscribed to this ws subscription,
+//                             // we can close in a write lock to avoid race conditions agains
+//                             // new clients subscriptions that might come in whilst the
+//                             // subscription is being removed from the connection state
+//                             number_of_active_listeners = active_listeners.len();
+//                             for recp in active_listeners {
+//                                 let ms = from_tungstenite(message_text.clone()).unwrap();
+//                                 match recp.try_send(ms) {
+//                                     Ok(_) => (),
+//                                     Err(_try_send_error) => {
+//                                         // warn!("Sending error, client likely disconnected.");
+//                                     }
+//                                 }
+//                             }
+//                         }
 
-                        if number_of_active_listeners == 0 {
-                            let mut locked_state = connection_state.write().unwrap();
-                            // check again there are no new clients for the subsctiption
-                            // client_subscriptions = connection_state_lock.
-                            let listener_hash_map =
-                                locked_state.subscription_state.get(&ws_endpoint);
-                            let active_listeners = match listener_hash_map {
-                                Some(listeners) => listeners,
-                                None => {
-                                    info!("Subscription {} no longer required", &ws_endpoint);
-                                    closing_down = true;
-                                    break;
-                                }
-                            };
-                            if active_listeners.is_empty() {
-                                info!(
-                                    "Removing subscription {} from subscriptions \
-                            no more listeners",
-                                    &ws_endpoint
-                                );
-                                locked_state.subscription_state.remove(&ws_endpoint);
-                                closing_down = true;
-                                break;
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        error!(
-                            "Error parsing message on subscription {} Error {}",
-                            &ws_endpoint, err
-                        )
-                    }
-                }
-            }
-            if closing_down {
-                break;
-            }
-        }
-        info!("Subscription task for {} exiting", ws_endpoint);
-    })
-}
+//                         if number_of_active_listeners == 0 {
+//                             let mut locked_state = connection_state.write().unwrap();
+//                             // check again there are no new clients for the subsctiption
+//                             // client_subscriptions = connection_state_lock.
+//                             let listener_hash_map =
+//                                 locked_state.subscription_state.get(&ws_endpoint);
+//                             let active_listeners = match listener_hash_map {
+//                                 Some(listeners) => listeners,
+//                                 None => {
+//                                     info!("Subscription {} no longer required", &ws_endpoint);
+//                                     closing_down = true;
+//                                     break;
+//                                 }
+//                             };
+//                             if active_listeners.is_empty() {
+//                                 info!(
+//                                     "Removing subscription {} from subscriptions \
+//                             no more listeners",
+//                                     &ws_endpoint
+//                                 );
+//                                 locked_state.subscription_state.remove(&ws_endpoint);
+//                                 closing_down = true;
+//                                 break;
+//                             }
+//                         }
+//                     }
+//                     Err(err) => {
+//                         error!(
+//                             "Error parsing message on subscription {} Error {}",
+//                             &ws_endpoint, err
+//                         )
+//                     }
+//                 }
+//             }
+//             if closing_down {
+//                 break;
+//             }
+//         }
+//         info!("Subscription task for {} exiting", ws_endpoint);
+//     })
+// }
 
 pub async fn fallback(uri: Uri, OriginalUri(original_uri): OriginalUri) -> (StatusCode, String) {
     warn!("Request for unknown route {}", original_uri);
@@ -364,7 +364,7 @@ pub async fn axum_ws_handler(
     // authorization_header: Option<TypedHeader<headers::Authorization<Token>>>,
     headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    State(connection_state): State<ConnectionState>,
+    State(connection_state): State<ConnectionStateTwo>,
     Extension(uris): Extension<URIs>,
     req: Request<Body>,
 ) -> impl IntoResponse {
@@ -442,70 +442,70 @@ pub async fn axum_ws_handler(
     })
 }
 
-pub fn add_client_to_subscription(
-    connection_state: &ConnectionState,
-    client_address: &SocketAddr,
-    request_endpoint_str: &String,
-    cbag_uri: String,
-    mut tx: Sender<axum::extract::ws::Message>,
-    market_data_type: MarketDataType,
-) {
-    {
-        let mut connection_state_locked = connection_state.write().unwrap();
-        // check if the endpoint is already subscribed to, if not
-        // start a process to subscribe to the endpoint
-        let already_subscribed = if !connection_state_locked
-            .subscription_state
-            .contains_key(request_endpoint_str)
-        {
-            connection_state_locked
-                .subscription_state
-                .insert(request_endpoint_str.clone(), HashMap::new());
-            false
-        } else {
-            true
-        };
-        let subscription_count = connection_state_locked
-            .subscription_count
-            .entry(*client_address)
-            .or_insert(0);
-        *subscription_count += 1;
-        info!(
-            "Subscription {} added. Total Subs: {}",
-            &request_endpoint_str, *subscription_count
-        );
-        // Access the inner HashMap and add a value to it
-        if let Some(ws_endpoint_clients) = connection_state_locked
-            .subscription_state
-            .get_mut(request_endpoint_str)
-        {
-            ws_endpoint_clients.insert(*client_address, tx);
-            //insert into subscription count and add 1 to the count
-            info!(
-                "Subscription {} added. Total Subs: {}",
-                &request_endpoint_str,
-                ws_endpoint_clients.len()
-            );
-            if already_subscribed {
-                info!(
-                    "Subscription {} already exists, adding client to subscription. Total Subs: {}",
-                    &request_endpoint_str,
-                    ws_endpoint_clients.len()
-                );
-            }
-        } else {
-            panic!("Expected key in connection state not found")
-        }
-        if !already_subscribed {
-            let _handle = subscribe_to_market_data(
-                &request_endpoint_str,
-                Arc::clone(&connection_state),
-                cbag_uri,
-                market_data_type,
-            );
-        }
-    }
-}
+// pub fn add_client_to_subscription(
+//     connection_state: &ConnectionState,
+//     client_address: &SocketAddr,
+//     request_endpoint_str: &String,
+//     cbag_uri: String,
+//     mut tx: Sender<axum::extract::ws::Message>,
+//     market_data_type: MarketDataType,
+// ) {
+//     {
+//         let mut connection_state_locked = connection_state.write().unwrap();
+//         // check if the endpoint is already subscribed to, if not
+//         // start a process to subscribe to the endpoint
+//         let already_subscribed = if !connection_state_locked
+//             .subscription_state
+//             .contains_key(request_endpoint_str)
+//         {
+//             connection_state_locked
+//                 .subscription_state
+//                 .insert(request_endpoint_str.clone(), HashMap::new());
+//             false
+//         } else {
+//             true
+//         };
+//         let subscription_count = connection_state_locked
+//             .subscription_count
+//             .entry(*client_address)
+//             .or_insert(0);
+//         *subscription_count += 1;
+//         info!(
+//             "Subscription {} added. Total Subs: {}",
+//             &request_endpoint_str, *subscription_count
+//         );
+//         // Access the inner HashMap and add a value to it
+//         if let Some(ws_endpoint_clients) = connection_state_locked
+//             .subscription_state
+//             .get_mut(request_endpoint_str)
+//         {
+//             ws_endpoint_clients.insert(*client_address, tx);
+//             //insert into subscription count and add 1 to the count
+//             info!(
+//                 "Subscription {} added. Total Subs: {}",
+//                 &request_endpoint_str,
+//                 ws_endpoint_clients.len()
+//             );
+//             if already_subscribed {
+//                 info!(
+//                     "Subscription {} already exists, adding client to subscription. Total Subs: {}",
+//                     &request_endpoint_str,
+//                     ws_endpoint_clients.len()
+//                 );
+//             }
+//         } else {
+//             panic!("Expected key in connection state not found")
+//         }
+//         if !already_subscribed {
+//             let _handle = subscribe_to_market_data(
+//                 &request_endpoint_str,
+//                 Arc::clone(&connection_state),
+//                 cbag_uri,
+//                 market_data_type,
+//             );
+//         }
+//     }
+// }
 
 /// Actual websocket state machine (one will be spawned per connection)
 // #[axum_macros::debug_handler]
@@ -513,7 +513,7 @@ async fn axum_handle_socket(
     websocket: WebSocket,
     client_address: SocketAddr,
     request_endpoint: Uri,
-    connection_state: ConnectionState,
+    connection_state: ConnectionStateTwo,
     cbag_uri: String,
     market_data_type: &MarketDataType,
     subscription_type: &SubscriptionType,
@@ -539,14 +539,23 @@ async fn axum_handle_socket(
     // if its a direct subscription we can add it straight away
     // else we will wait for the client to send us subscription messages
     if matches!(subscription_type, SubscriptionType::DIRECT) {
-        add_client_to_subscription(
-            &connection_state,
+        connection_state.add_client_to_subscription(
             &client_address,
             &request_endpoint_str,
             cbag_uri,
             tx,
             market_data_type.clone(),
+            Arc::clone(&connection_state)
         );
+
+        // add_client_to_subscription(
+        //     &connection_state,
+        //     &client_address,
+        //     &request_endpoint_str,
+        //     cbag_uri,
+        //     tx,
+        //     market_data_type.clone(),
+        // );
     }
 
     let connection_state_clone = connection_state.clone();
@@ -565,19 +574,28 @@ async fn axum_handle_socket(
                     continue;
                 }
 
-                let connection_state_locked = connection_state_clone.read().unwrap();
+                // let connection_state_locked = connection_state_clone.read().unwrap();
                 // Check if the outer HashMap contains the key
 
                 // check if client address is in subscription count or if the subscription count is 0 for the client address
-                if !connection_state_locked
-                    .subscription_count
-                    .contains_key(&client_address_clone)
-                    || connection_state_locked
-                        .subscription_count
-                        .get(&client_address_clone)
-                        .unwrap()
-                        == &0
-                {
+                // if !connection_state_locked
+                //     .subscription_count
+                //     .contains_key(&client_address_clone)
+                //     || connection_state_locked
+                //         .subscription_count
+                //         .get(&client_address_clone)
+                //         .unwrap()
+                //         == &0
+                // {
+                //     info!(
+                //         "Client {} Disconnected or subscription no longer active. ending check task",
+                //         &client_address_clone
+                //     );
+                //     info!("returning");
+                //     return;
+                // }
+
+                if !connection_state_clone.is_client_still_active(&client_address){
                     info!(
                         "Client {} Disconnected or subscription no longer active. ending check task",
                         &client_address_clone
@@ -585,6 +603,7 @@ async fn axum_handle_socket(
                     info!("returning");
                     return;
                 }
+
 
                 // if let Some(subscribed_clients) = connection_state_locked.subscription_state.get(&endpoint_clone) {
                 //     // Check if the inner HashMap contains the key
@@ -803,40 +822,43 @@ async fn axum_handle_socket(
     //stop the recv task
     // recv_task.abort();
 
+
+    connection_state.remove_client_from_state(&client_address);
+
     // remove from the client from the connection state
-    {
-        let mut connection_state_locked = connection_state.write().unwrap();
+    // {
+    //     let mut connection_state_locked = connection_state.write().unwrap();
 
-        // TODO: this could probably be more efficient
-        for (subscription, subscribed_clients) in
-            connection_state_locked.subscription_state.iter_mut()
-        {
-            subscribed_clients.remove(&client_address);
-            info!(
-                "{} There are {} clients remaining",
-                &subscription,
-                subscribed_clients.len()
-            );
-        }
-        // remove the client address from the subscription_count if it is in there
-        if connection_state_locked
-            .subscription_count
-            .contains_key(&client_address)
-        {
-            connection_state_locked
-                .subscription_count
-                .remove(&client_address);
-        }
+    //     // TODO: this could probably be more efficient
+    //     for (subscription, subscribed_clients) in
+    //         connection_state_locked.subscription_state.iter_mut()
+    //     {
+    //         subscribed_clients.remove(&client_address);
+    //         info!(
+    //             "{} There are {} clients remaining",
+    //             &subscription,
+    //             subscribed_clients.len()
+    //         );
+    //     }
+    //     // remove the client address from the subscription_count if it is in there
+    //     if connection_state_locked
+    //         .subscription_count
+    //         .contains_key(&client_address)
+    //     {
+    //         connection_state_locked
+    //             .subscription_count
+    //             .remove(&client_address);
+    //     }
 
-        // if let Some(ws_endpoint_clients) = connection_state_locked.subscription_state.get_mut(&request_endpoint_str) {
-        //     ws_endpoint_clients.remove(&client_address);
-        //     info!(
-        //         "{} There are {} clients remaining",
-        //         &request_endpoint_str,
-        //         ws_endpoint_clients.len()
-        //     );
-        // }
-    }
+    //     // if let Some(ws_endpoint_clients) = connection_state_locked.subscription_state.get_mut(&request_endpoint_str) {
+    //     //     ws_endpoint_clients.remove(&client_address);
+    //     //     info!(
+    //     //         "{} There are {} clients remaining",
+    //     //         &request_endpoint_str,
+    //     //         ws_endpoint_clients.len()
+    //     //     );
+    //     // }
+    // }
     // returning from the handler closes the websocket connection
     info!("Websocket context {} destroyed", client_address);
 }

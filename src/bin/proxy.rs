@@ -7,7 +7,7 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 use merckx::functions::*;
-use merckx::state::{ConnectionState, ConnectionStateStruct};
+use merckx::state::{ConnectionStateTwo, ConnectionStateStruct};
 
 #[derive(FromArgs)]
 /// A Market Data Proxy for CBAG market data requests
@@ -43,7 +43,7 @@ async fn main() {
 
     // connection state which will hold a state of all subscriptions
     // and their respective clients
-    let connection_state = ConnectionState::new(RwLock::new(ConnectionStateStruct::new()));
+    let connection_state = ConnectionStateTwo::default();
     let cbag_uri_clone = cbag_uri.clone();
 
     // build our application with a route

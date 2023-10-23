@@ -18,7 +18,7 @@ mod state;
 
 // import functions.rs
 use merckx::functions::{axum_ws_handler, fallback, forward_request, root, URIs};
-use merckx::state::{ConnectionState, ConnectionStateStruct};
+use merckx::state::{ConnectionStateTwo, ConnectionStateStruct};
 
 use merckx::md_handlers::rest_cost_calculator_v1;
 
@@ -73,7 +73,7 @@ async fn main() {
 
     // connection state which will hold a state of all subscriptions
     // and their respective clients
-    let connection_state = ConnectionState::new(RwLock::new(ConnectionStateStruct::new()));
+    let connection_state = ConnectionStateTwo::default();
     // will hold the number of subscriptions per client. Useful for knowing
     // when to disconnect from the websocket session
 
