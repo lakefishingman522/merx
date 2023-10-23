@@ -7,7 +7,7 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 use merckx::functions::*;
-use merckx::state::{ConnectionStateTwo, ConnectionStateStruct};
+use merckx::state::{ConnectionStateStruct, ConnectionStateTwo};
 
 #[derive(FromArgs)]
 /// A Market Data Proxy for CBAG market data requests

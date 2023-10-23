@@ -545,7 +545,7 @@ async fn axum_handle_socket(
             cbag_uri,
             tx,
             market_data_type.clone(),
-            Arc::clone(&connection_state)
+            Arc::clone(&connection_state),
         );
 
         // add_client_to_subscription(
@@ -595,7 +595,7 @@ async fn axum_handle_socket(
                 //     return;
                 // }
 
-                if !connection_state_clone.is_client_still_active(&client_address){
+                if !connection_state_clone.is_client_still_active(&client_address) {
                     info!(
                         "Client {} Disconnected or subscription no longer active. ending check task",
                         &client_address_clone
@@ -603,7 +603,6 @@ async fn axum_handle_socket(
                     info!("returning");
                     return;
                 }
-
 
                 // if let Some(subscribed_clients) = connection_state_locked.subscription_state.get(&endpoint_clone) {
                 //     // Check if the inner HashMap contains the key
@@ -821,7 +820,6 @@ async fn axum_handle_socket(
 
     //stop the recv task
     // recv_task.abort();
-
 
     connection_state.remove_client_from_state(&client_address);
 

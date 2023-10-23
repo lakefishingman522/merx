@@ -18,7 +18,7 @@ mod state;
 
 // import functions.rs
 use merckx::functions::{axum_ws_handler, fallback, forward_request, root, URIs};
-use merckx::state::{ConnectionStateTwo, ConnectionStateStruct};
+use merckx::state::{ConnectionStateStruct, ConnectionStateTwo};
 
 use merckx::md_handlers::rest_cost_calculator_v1;
 

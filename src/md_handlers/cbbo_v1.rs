@@ -1,8 +1,5 @@
 use crate::md_handlers::helper::cbag_market_to_exchange;
-use crate::{
-    routes_config::MarketDataType,
-    state::ConnectionStateTwo,
-};
+use crate::{routes_config::MarketDataType, state::ConnectionStateTwo};
 // use futures_channel::mpsc::Sender;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

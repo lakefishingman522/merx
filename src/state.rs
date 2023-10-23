@@ -156,7 +156,7 @@ impl ConnectionStateStructTwo {
         Ok(())
     }
 
-    pub fn remove_client_from_state(&self, &client_address: &SocketAddr){
+    pub fn remove_client_from_state(&self, &client_address: &SocketAddr) {
         let mut subscription_state = self.subscription_state.write().unwrap();
         let mut subscription_count = self.subscription_count.write().unwrap();
 
@@ -180,8 +180,6 @@ impl ConnectionStateStructTwo {
         }
         false
     }
-
-
 }
 
 #[allow(unused_assignments)]
@@ -209,8 +207,10 @@ pub fn subscribe_to_market_data(
                     "Unable to connect, closing down subscription {}",
                     &ws_endpoint
                 );
-                let mut locked_subscription_state = connection_state.subscription_state.write().unwrap(); //TODO: maybe only need a read lock when sending out the messages
-                let mut locked_subscription_count = connection_state.subscription_count.write().unwrap();
+                let mut locked_subscription_state =
+                    connection_state.subscription_state.write().unwrap(); //TODO: maybe only need a read lock when sending out the messages
+                let mut locked_subscription_count =
+                    connection_state.subscription_count.write().unwrap();
                 let listener_hash_map = locked_subscription_state.get(&ws_endpoint);
                 let active_listeners = match listener_hash_map {
                     Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
@@ -241,10 +241,8 @@ pub fn subscribe_to_market_data(
 
                 // clean up subscription counts for those clients who were connected
                 // for this subscription
-                let client_subscriptions = locked_subscription_state
-                    .get(&ws_endpoint)
-                    .unwrap()
-                    .clone();
+                let client_subscriptions =
+                    locked_subscription_state.get(&ws_endpoint).unwrap().clone();
                 for (client_address, _) in client_subscriptions.iter() {
                     if let Some(count) = locked_subscription_count.get_mut(client_address) {
                         *count -= 1;
@@ -334,9 +332,9 @@ pub fn subscribe_to_market_data(
                         let number_of_active_listeners: usize;
                         // this is a read lock only
                         {
-                            let locked_subscription_state = connection_state.subscription_state.read().unwrap();
-                            let listener_hash_map =
-                                locked_subscription_state.get(&ws_endpoint);
+                            let locked_subscription_state =
+                                connection_state.subscription_state.read().unwrap();
+                            let listener_hash_map = locked_subscription_state.get(&ws_endpoint);
                             let active_listeners = match listener_hash_map {
                                 Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
                                 None => {
@@ -362,11 +360,11 @@ pub fn subscribe_to_market_data(
                         }
 
                         if number_of_active_listeners == 0 {
-                            let mut locked_subscription_state = connection_state.subscription_state.write().unwrap();
+                            let mut locked_subscription_state =
+                                connection_state.subscription_state.write().unwrap();
                             // check again there are no new clients for the subsctiption
                             // client_subscriptions = connection_state_lock.
-                            let listener_hash_map =
-                                locked_subscription_state.get(&ws_endpoint);
+                            let listener_hash_map = locked_subscription_state.get(&ws_endpoint);
                             let active_listeners = match listener_hash_map {
                                 Some(listeners) => listeners,
                                 None => {
