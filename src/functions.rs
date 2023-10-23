@@ -1,22 +1,17 @@
-use std::{
-    collections::HashMap,
-    net::SocketAddr,
-    sync::{Arc, RwLock},
-    thread,
-};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc, thread};
 
 use futures::future;
 use futures::stream::TryStreamExt;
-use futures_util::{pin_mut, StreamExt, SinkExt};
+use futures_util::{pin_mut, SinkExt, StreamExt};
 // use futures_util::{pin_mut};
 // use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 // use futures_channel::mpsc::{channel, Receiver, Sender};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 // Import the TryStreamExt trait
+use lazy_static::lazy_static;
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, timeout, Duration};
 use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use lazy_static::lazy_static;
 
 // for axum
 use axum::{body::Body, extract::ws::Message as axum_Message, http::Uri};
@@ -40,6 +35,7 @@ use tracing::{error, info, warn};
 
 use crate::md_handlers::{cbbo_v1, market_depth_v1};
 use crate::routes_config::{MarketDataType, SubscriptionType, ROUTES, SUB_TYPE};
+use crate::state::ConnectionState;
 use crate::{
     auth::authenticate_token, md_handlers::rest_cost_calculator_v1::RestCostCalculatorV1RequestBody,
 };
@@ -48,27 +44,25 @@ pub type Tx = Sender<axum::extract::ws::Message>;
 // pub type ConnectionState = Arc<RwLock<HashMap<String, HashMap<SocketAddr, Tx>>>>;
 // pub type SubscriptionCount = Arc<RwLock<HashMap<SocketAddr, u32>>>;
 
-pub type SubscriptionState = HashMap<String, HashMap<SocketAddr, Tx>>;
-pub type SubscriptionCount = HashMap<SocketAddr, u32>;
-
-
+// pub type SubscriptionState = HashMap<String, HashMap<SocketAddr, Tx>>;
+// pub type SubscriptionCount = HashMap<SocketAddr, u32>;
 
 lazy_static! {
     // bound for the number of messages to hold in a channel
     static ref SENDER_BOUND: usize = 500;
 }
 
-#[derive(Default)]
-pub struct ConnectionStateStruct {
-    subscription_state: SubscriptionState,
-    subscription_count: SubscriptionCount,
-}
+// #[derive(Default)]
+// pub struct ConnectionStateStruct {
+//     subscription_state: SubscriptionState,
+//     subscription_count: SubscriptionCount,
+// }
 
-impl ConnectionStateStruct {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
+// impl ConnectionStateStruct {
+//     pub fn new() -> Self {
+//         Self::default()
+//     }
+// }
 
 #[derive(Clone)]
 pub struct URIs {
@@ -76,7 +70,7 @@ pub struct URIs {
     pub auth_uri: String,
 }
 
-pub type ConnectionState = Arc<RwLock<ConnectionStateStruct>>;
+// pub type ConnectionState = Arc<RwLock<ConnectionStateStruct>>;
 
 // helper function for conversions from tungstenite message to axum message
 fn from_tungstenite(message: Message) -> Option<axum::extract::ws::Message> {
@@ -448,7 +442,6 @@ pub async fn axum_ws_handler(
     })
 }
 
-
 pub fn add_client_to_subscription(
     connection_state: &ConnectionState,
     client_address: &SocketAddr,
@@ -526,10 +519,7 @@ async fn axum_handle_socket(
     subscription_type: &SubscriptionType,
 ) {
     // added by karun
-    let (mut tx, mut rx): (
-        Sender<axum_Message>,
-        Receiver<axum_Message>,
-    ) = channel(*SENDER_BOUND);
+    let (mut tx, mut rx): (Sender<axum_Message>, Receiver<axum_Message>) = channel(*SENDER_BOUND);
     // let (tx, rx) = unbounded();
 
     let thread_id = thread::current().id();
@@ -785,15 +775,14 @@ async fn axum_handle_socket(
     let receive_from_others = async {
         while let Some(msg) = rx.recv().await {
             match outgoing.send(msg).await {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(_try_send_error) => {
                     warn!("Sending error, client likely disconnected.");
-                    break
+                    break;
                 }
             }
         }
     };
-
 
     pin_mut!(
         check_subscription_still_active,

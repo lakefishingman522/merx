@@ -14,11 +14,11 @@ mod auth;
 mod functions;
 mod md_handlers;
 mod routes_config;
+mod state;
 
 // import functions.rs
-use merckx::functions::{
-    axum_ws_handler, fallback, forward_request, root, ConnectionState, ConnectionStateStruct, URIs,
-};
+use merckx::functions::{axum_ws_handler, fallback, forward_request, root, URIs};
+use merckx::state::{ConnectionState, ConnectionStateStruct};
 
 use merckx::md_handlers::rest_cost_calculator_v1;
 
