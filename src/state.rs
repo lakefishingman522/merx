@@ -6,24 +6,15 @@ use std::{
 use tokio::task::JoinHandle;
 
 // use futures_channel::mpsc::{UnboundedSender};
-use futures::stream::TryStreamExt;
-use futures_util::{pin_mut, SinkExt, StreamExt};
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use futures_util::StreamExt;
+use tokio::sync::mpsc::Sender;
 
-use axum::{body::Body, extract::ws::Message as axum_Message, http::Uri};
-use axum::{
-    extract::ws::{CloseFrame, WebSocket, WebSocketUpgrade},
-    extract::{OriginalUri, Query, State},
-    http::HeaderMap,
-    http::{Request, Response, StatusCode},
-    response::IntoResponse,
-    TypedHeader,
-};
+use axum::extract::ws::CloseFrame;
+use axum::extract::ws::Message as axum_Message;
 use tokio::time::{sleep, timeout, Duration};
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{error, info, warn};
-use url::Url;
 
 use crate::{
     md_handlers::{cbbo_v1, market_depth_v1},
@@ -179,6 +170,33 @@ impl ConnectionStateStructTwo {
             }
         }
         false
+    }
+
+    pub fn to_json(&self) -> String {
+        // generate a hashmap of from subscription_state of subscription to a vector of client addresses
+        let subscription_state = self.subscription_state.read().unwrap();
+        let mut subscription_state_json = HashMap::new();
+        for (subscription, subscription_clients) in subscription_state.iter() {
+            let mut client_addresses = Vec::new();
+            for (client_address, _) in subscription_clients.iter() {
+                client_addresses.push(client_address.to_string());
+            }
+            subscription_state_json.insert(subscription, client_addresses);
+        }
+
+        //create a hashmap of client to subscription count
+        let mut subscription_count_json = HashMap::new();
+        let subscription_count = self.subscription_count.read().unwrap();
+        for (client_address, count) in subscription_count.iter() {
+            subscription_count_json.insert(client_address.to_string(), count);
+        }
+
+        let subscription_state_json = serde_json::json!({
+            "subscription_state": subscription_state_json,
+            "subscription_count": subscription_count_json
+        });
+
+        serde_json::to_string(&subscription_state_json).unwrap()
     }
 }
 
