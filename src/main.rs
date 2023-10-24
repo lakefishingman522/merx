@@ -17,8 +17,8 @@ mod routes_config;
 mod state;
 
 // import functions.rs
-use merckx::functions::{axum_ws_handler, fallback, forward_request, root, URIs};
-use merckx::state::{ConnectionStateStruct, ConnectionStateTwo};
+use merckx::functions::{axum_ws_handler, fallback, forward_request, get_state, root, URIs};
+use merckx::state::{ConnectionStateStructTwo, ConnectionStateTwo};
 
 use merckx::md_handlers::rest_cost_calculator_v1;
 
@@ -73,7 +73,7 @@ async fn main() {
 
     // connection state which will hold a state of all subscriptions
     // and their respective clients
-    let connection_state = ConnectionStateTwo::default();
+    let connection_state = ConnectionStateTwo::new(ConnectionStateStructTwo::default());
     // will hold the number of subscriptions per client. Useful for knowing
     // when to disconnect from the websocket session
 
@@ -83,6 +83,7 @@ async fn main() {
         .route("/", get(root))
         // REST endpoints
         .route("/version", get(forward_request))
+        .route("/state", get(get_state))
         // .route("/book/:symbol", get(forward_request))
         // .route("/properties/:symbol", get(forward_request))
         // .route("/legacy-cbbo/:symbol", get(forward_request))
