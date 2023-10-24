@@ -860,3 +860,14 @@ async fn axum_handle_socket(
     // returning from the handler closes the websocket connection
     info!("Websocket context {} destroyed", client_address);
 }
+
+pub async fn get_state(
+    connection_state: State<ConnectionStateTwo>,
+    Extension(uris): Extension<URIs>,
+) -> impl IntoResponse {
+    let json_string = connection_state.to_json();
+    Response::builder()
+        .status(StatusCode::OK)
+        .body(Body::from(json_string))
+        .unwrap()
+}
