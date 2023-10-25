@@ -9,9 +9,8 @@ use futures_util::{pin_mut, SinkExt, StreamExt};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 // Import the TryStreamExt trait
 use lazy_static::lazy_static;
-use tokio::task::JoinHandle;
-use tokio::time::{sleep, timeout, Duration};
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use tokio::time::{sleep, Duration};
+use tokio_tungstenite::{tungstenite::protocol::Message};
 
 // for axum
 use axum::{body::Body, extract::ws::Message as axum_Message, http::Uri};
@@ -519,7 +518,7 @@ async fn axum_handle_socket(
     subscription_type: &SubscriptionType,
 ) {
     // added by karun
-    let (mut tx, mut rx): (Sender<axum_Message>, Receiver<axum_Message>) = channel(*SENDER_BOUND);
+    let (tx, mut rx): (Sender<axum_Message>, Receiver<axum_Message>) = channel(*SENDER_BOUND);
     // let (tx, rx) = unbounded();
 
     let thread_id = thread::current().id();
