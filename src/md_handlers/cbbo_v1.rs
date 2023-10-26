@@ -1,5 +1,5 @@
 use crate::md_handlers::helper::cbag_market_to_exchange;
-use crate::{routes_config::MarketDataType, state::ConnectionStateTwo};
+use crate::{routes_config::MarketDataType, state::ConnectionState};
 // use futures_channel::mpsc::Sender;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -46,10 +46,10 @@ struct LegacyCbboUpdate {
 //TODO should this implement a trait?
 pub fn handle_subscription(
     client_address: &SocketAddr,
-    connection_state: &ConnectionStateTwo,
+    connection_state: &ConnectionState,
     subscription_msg: String,
     cbag_uri: String,
-    mut sender: Tx,
+    sender: Tx,
     market_data_type: MarketDataType,
 ) {
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
