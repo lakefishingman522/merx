@@ -26,20 +26,6 @@ pub type Tx = Sender<axum::extract::ws::Message>;
 pub type SubscriptionState = HashMap<String, HashMap<SocketAddr, Tx>>;
 pub type SubscriptionCount = HashMap<SocketAddr, u32>;
 
-#[derive(Default)]
-pub struct ConnectionStateStruct {
-    pub subscription_state: SubscriptionState,
-    pub subscription_count: SubscriptionCount,
-}
-
-impl ConnectionStateStruct {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
-pub type ConnectionState = Arc<RwLock<ConnectionStateStruct>>;
-
 // helper function for conversions from tungstenite message to axum message
 fn from_tungstenite(message: Message) -> Option<axum::extract::ws::Message> {
     match message {
@@ -59,14 +45,14 @@ fn from_tungstenite(message: Message) -> Option<axum::extract::ws::Message> {
 }
 
 #[derive(Default)]
-pub struct ConnectionStateStructTwo {
+pub struct ConnectionStateStruct {
     pub subscription_state: RwLock<SubscriptionState>,
     pub subscription_count: RwLock<SubscriptionCount>,
 }
 
-pub type ConnectionStateTwo = Arc<ConnectionStateStructTwo>;
+pub type ConnectionState = Arc<ConnectionStateStruct>;
 
-impl ConnectionStateStructTwo {
+impl ConnectionStateStruct {
     pub fn add_client_to_subscription(
         &self,
         client_address: &SocketAddr,
@@ -74,7 +60,7 @@ impl ConnectionStateStructTwo {
         cbag_uri: String,
         sender: Tx,
         market_data_type: MarketDataType,
-        connection_state: ConnectionStateTwo,
+        connection_state: ConnectionState,
     ) -> Result<(), String> {
         let mut subscription_state = self.subscription_state.write().unwrap();
         let mut subscription_count = self.subscription_count.write().unwrap();
@@ -203,7 +189,7 @@ impl ConnectionStateStructTwo {
 #[allow(unused_assignments)]
 pub fn subscribe_to_market_data(
     ws_endpoint: &str,
-    connection_state: ConnectionStateTwo,
+    connection_state: ConnectionState,
     cbag_uri: String,
     market_data_type: MarketDataType,
 ) -> JoinHandle<()> {
