@@ -56,7 +56,6 @@ pub async fn authenticate_token(auth_uri: &str, token: &str) -> Result<(), ()> {
     match res {
         Ok(res) => match res.status() {
             reqwest::StatusCode::OK => {
-                println!("auth success");
                 Ok(())
             }
             _ => {
