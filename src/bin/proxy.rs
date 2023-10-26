@@ -1,13 +1,13 @@
 use argh::FromArgs;
 use axum::extract::Extension;
 use axum::{routing::get, Router};
-use std::{collections::HashMap, net::SocketAddr, sync::RwLock};
+use std::net::SocketAddr;
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 use merckx::functions::*;
-use merckx::state::{ConnectionStateStruct, ConnectionStateTwo};
+use merckx::state::ConnectionState;
 
 #[derive(FromArgs)]
 /// A Market Data Proxy for CBAG market data requests
@@ -43,7 +43,7 @@ async fn main() {
 
     // connection state which will hold a state of all subscriptions
     // and their respective clients
-    let connection_state = ConnectionStateTwo::default();
+    let connection_state = ConnectionState::default();
     let cbag_uri_clone = cbag_uri.clone();
 
     // build our application with a route
