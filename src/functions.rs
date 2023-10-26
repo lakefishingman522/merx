@@ -10,7 +10,7 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 // Import the TryStreamExt trait
 use lazy_static::lazy_static;
 use tokio::time::{sleep, Duration};
-use tokio_tungstenite::{tungstenite::protocol::Message};
+use tokio_tungstenite::tungstenite::protocol::Message;
 
 // for axum
 use axum::{body::Body, extract::ws::Message as axum_Message, http::Uri};
@@ -34,7 +34,7 @@ use tracing::{error, info, warn};
 
 use crate::md_handlers::{cbbo_v1, market_depth_v1};
 use crate::routes_config::{MarketDataType, SubscriptionType, ROUTES, SUB_TYPE};
-use crate::state::ConnectionStateTwo;
+use crate::state::ConnectionState;
 use crate::{
     auth::authenticate_token, md_handlers::rest_cost_calculator_v1::RestCostCalculatorV1RequestBody,
 };
@@ -363,7 +363,7 @@ pub async fn axum_ws_handler(
     // authorization_header: Option<TypedHeader<headers::Authorization<Token>>>,
     headers: HeaderMap,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    State(connection_state): State<ConnectionStateTwo>,
+    State(connection_state): State<ConnectionState>,
     Extension(uris): Extension<URIs>,
     req: Request<Body>,
 ) -> impl IntoResponse {
@@ -512,7 +512,7 @@ async fn axum_handle_socket(
     websocket: WebSocket,
     client_address: SocketAddr,
     request_endpoint: Uri,
-    connection_state: ConnectionStateTwo,
+    connection_state: ConnectionState,
     cbag_uri: String,
     market_data_type: &MarketDataType,
     subscription_type: &SubscriptionType,
@@ -861,7 +861,7 @@ async fn axum_handle_socket(
 }
 
 pub async fn get_state(
-    connection_state: State<ConnectionStateTwo>,
+    connection_state: State<ConnectionState>,
     Extension(uris): Extension<URIs>,
 ) -> impl IntoResponse {
     let json_string = connection_state.to_json();
