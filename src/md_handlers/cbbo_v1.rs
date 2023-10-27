@@ -91,12 +91,12 @@ pub fn handle_subscription(
             .unwrap();
     }
 
-    let all_cbag_markets = match connection_state.get_all_cbag_markets_string(username){
+    let all_cbag_markets = match connection_state.get_all_cbag_markets_string(username) {
         Ok(markets) => markets,
         Err(e) => {
             sender
                 .try_send(axum::extract::ws::Message::Text(
-                    serde_json::json!({"error": e}).to_string(),
+                    serde_json::json!({ "error": e }).to_string(),
                 ))
                 .unwrap();
             return;
