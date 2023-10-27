@@ -30,6 +30,7 @@ pub fn handle_subscription(
     cbag_uri: String,
     mut sender: Tx,
     market_data_type: MarketDataType,
+    username: &str,
 ) {
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
         Ok(msg) => msg,
@@ -68,11 +69,24 @@ pub fn handle_subscription(
         return;
     }
 
-    let mut markets: String = String::new();
-    for exchange in parsed_sub_msg.exchanges {
-        markets.push_str(&&exchange_to_cbag_market(&exchange));
-        markets.push_str(",");
-    }
+    let cbag_markets =
+        match connection_state.validate_exchanges_vector(username, &parsed_sub_msg.exchanges) {
+            Ok(cbag_markets) => cbag_markets,
+            Err(e) => {
+                sender
+                    .try_send(axum::extract::ws::Message::Text(
+                        serde_json::json!({ "error": e }).to_string(),
+                    ))
+                    .unwrap();
+                return;
+            }
+        };
+
+    // let mut markets: String = String::new();
+    // for exchange in parsed_sub_msg.exchanges {
+    //     markets.push_str(&&exchange_to_cbag_market(&exchange));
+    //     markets.push_str(",");
+    // }
 
     let depth_limit = match parsed_sub_msg.depth_limit {
         Some(depth_limit) => depth_limit.to_string(),
@@ -81,7 +95,7 @@ pub fn handle_subscription(
 
     let ws_endpoint: String = format!(
         "/ws/snapshot/{}?markets={}&depth_limit={}&interval_ms=300",
-        parsed_sub_msg.currency_pair, markets, depth_limit,
+        parsed_sub_msg.currency_pair, cbag_markets, depth_limit,
     );
 
     connection_state.add_client_to_subscription(
