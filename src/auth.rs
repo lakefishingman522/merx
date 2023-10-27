@@ -3,7 +3,7 @@ use reqwest::Client;
 use std::collections::HashMap;
 
 // import UserResponse struct
-use crate::{state::ConnectionState, user::UserResponse};
+use crate::{state::ConnectionState, symbols::CurrencyPairsResponse, user::UserResponse};
 
 #[allow(unused_imports)]
 use tracing::{error, info, warn};
@@ -102,4 +102,22 @@ pub async fn authenticate_token(
             Err("error: {:?}".to_string())
         }
     }
+}
+
+pub async fn get_currency_pairs(
+    auth_uri: &str,
+    token: &str,
+    connection_state: ConnectionState,
+) -> Result<(), String> {
+    let client = Client::new();
+    let currency_pairs_address = format!("https://{}/api/currency_pairs/", auth_uri);
+
+    let res = client
+        .get(currency_pairs_address)
+        .header("Authorization", format!("Token {}", token))
+        .header(reqwest::header::USER_AGENT, "merckx")
+        .send()
+        .await;
+
+    Ok(())
 }

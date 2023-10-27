@@ -15,6 +15,7 @@ mod functions;
 mod md_handlers;
 mod routes_config;
 mod state;
+mod symbols;
 mod user;
 
 // import functions.rs
