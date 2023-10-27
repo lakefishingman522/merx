@@ -28,7 +28,7 @@ pub fn handle_subscription(
     connection_state: &ConnectionState,
     subscription_msg: String,
     cbag_uri: String,
-    mut sender: Tx,
+    sender: Tx,
     market_data_type: MarketDataType,
     username: &str,
 ) {

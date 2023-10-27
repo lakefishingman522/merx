@@ -1,5 +1,5 @@
 use axum::{extract::Query, http::HeaderMap};
-use reqwest::{Client, Response};
+use reqwest::Client;
 use std::collections::HashMap;
 
 // import UserResponse struct
