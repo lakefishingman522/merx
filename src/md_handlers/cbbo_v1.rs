@@ -1,14 +1,13 @@
 use crate::md_handlers::helper::cbag_market_to_exchange;
-use crate::{
-    functions::{add_client_to_subscription, subscribe_to_market_data, ConnectionState},
-    routes_config::MarketDataType,
-};
-use futures_channel::mpsc::UnboundedSender;
+use crate::{routes_config::MarketDataType, state::ConnectionState};
+// use futures_channel::mpsc::Sender;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::{collections::HashMap, net::SocketAddr};
+use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::tungstenite::Message;
 
-pub type Tx = UnboundedSender<axum::extract::ws::Message>;
+pub type Tx = Sender<axum::extract::ws::Message>;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SubscriptionMessage {
@@ -52,13 +51,14 @@ pub fn handle_subscription(
     cbag_uri: String,
     sender: Tx,
     market_data_type: MarketDataType,
+    username: &str,
 ) {
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
         Ok(msg) => msg,
         Err(e) => {
             //TODO: remove the unwrap from here
             sender
-                .unbounded_send(axum::extract::ws::Message::Text(
+                .try_send(axum::extract::ws::Message::Text(
                     serde_json::json!({"error": "unable to parse subscription message"})
                         .to_string(),
                 ))
@@ -72,7 +72,7 @@ pub fn handle_subscription(
         Ok(size_filter) => size_filter,
         Err(e) => {
             sender
-                .unbounded_send(axum::extract::ws::Message::Text(
+                .try_send(axum::extract::ws::Message::Text(
                     serde_json::json!({"error": "size_filter must be a number"}).to_string(),
                 ))
                 .unwrap();
@@ -84,12 +84,24 @@ pub fn handle_subscription(
     //validate that size_filter is positive
     if parsed_size_filter < 0.0 {
         sender
-            .unbounded_send(axum::extract::ws::Message::Text(
+            .try_send(axum::extract::ws::Message::Text(
                 serde_json::json!({"error": "size_filter must be greater than or equal to 0"})
                     .to_string(),
             ))
             .unwrap();
     }
+
+    let all_cbag_markets = match connection_state.get_all_cbag_markets_string(username) {
+        Ok(markets) => markets,
+        Err(e) => {
+            sender
+                .try_send(axum::extract::ws::Message::Text(
+                    serde_json::json!({ "error": e }).to_string(),
+                ))
+                .unwrap();
+            return;
+        }
+    };
 
     let ws_endpoint: String = format!(
         "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&source={}&user={}",
@@ -97,17 +109,17 @@ pub fn handle_subscription(
         parsed_sub_msg.size_filter,
         1000,
         "merckx",
-        "merckx",
+        all_cbag_markets,
         "merckx"
     );
 
-    add_client_to_subscription(
-        connection_state,
+    connection_state.add_client_to_subscription(
         client_address,
         &ws_endpoint,
         cbag_uri.clone(),
         sender,
         market_data_type,
+        Arc::clone(&connection_state),
     );
 
     // subscribe_to_market_data(&ws_endpoint, connection_state.clone(), cbag_uri, );
