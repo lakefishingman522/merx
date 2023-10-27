@@ -36,7 +36,8 @@ use crate::md_handlers::{cbbo_v1, market_depth_v1};
 use crate::routes_config::{MarketDataType, SubscriptionType, ROUTES, SUB_TYPE};
 use crate::state::ConnectionState;
 use crate::{
-    auth::authenticate_token, md_handlers::rest_cost_calculator_v1::RestCostCalculatorV1RequestBody,
+    auth::{authenticate_token, check_token_and_authenticate},
+    md_handlers::rest_cost_calculator_v1::RestCostCalculatorV1RequestBody,
 };
 
 pub type Tx = Sender<axum::extract::ws::Message>;
@@ -395,37 +396,24 @@ pub async fn axum_ws_handler(
     let subscription_type = SUB_TYPE.get(&base_route.to_string()).unwrap();
 
     // if this isn't a direct subscription, then we have to authenticate
-    if !matches!(subscription_type, SubscriptionType::DIRECT) {
-        let token = if let Some(token) = headers.get("Authorization") {
-            let token = if let Ok(tok) = token.to_str() {
-                tok
-            } else {
-                warn!("Unable to parse token");
-                return (StatusCode::BAD_REQUEST, "Unable to parse token").into_response();
-            };
-            token
-            // info!("Authorization: {}", token);
-        } else if let Some(token) = params.get("token") {
-            info!("Token: {}", token);
-            token
-        } else {
-            return (StatusCode::UNAUTHORIZED, "No token provided").into_response();
-        };
-        match authenticate_token(&uris.auth_uri, token).await {
-            Ok(_) => {
-                // authenticated ok
-            }
+    let username = if !matches!(subscription_type, SubscriptionType::DIRECT) {
+        match check_token_and_authenticate(
+            &headers,
+            &Query(params),
+            &uris.auth_uri,
+            connection_state.clone(),
+        )
+        .await
+        {
+            Ok(username) => username,
             Err(_) => {
                 warn!("Unable to authenticate token");
                 return (StatusCode::UNAUTHORIZED, "Unable to authenticate token").into_response();
             }
         }
-    }
-
-    // respond with a 404 error
-    // if original_uri != "/ws/snapshot/subscription" {
-    //     return (StatusCode::BAD_REQUEST, "Placeholder Text").into_response(); //TODO
-    // }
+    } else {
+        "DIRECT".to_string()
+    };
 
     // we can customize the callback by sending additional info such as original_uri.
     ws.on_upgrade(move |socket| {
@@ -437,6 +425,7 @@ pub async fn axum_ws_handler(
             uris.cbag_uri,
             route,
             subscription_type,
+            username.clone(),
         )
     })
 }
@@ -516,6 +505,7 @@ async fn axum_handle_socket(
     cbag_uri: String,
     market_data_type: &MarketDataType,
     subscription_type: &SubscriptionType,
+    username: String,
 ) {
     // added by karun
     let (tx, mut rx): (Sender<axum_Message>, Receiver<axum_Message>) = channel(*SENDER_BOUND);
@@ -560,6 +550,7 @@ async fn axum_handle_socket(
     let connection_state_clone = connection_state.clone();
     let client_address_clone = client_address;
     let subscription_type_clone = subscription_type.clone();
+    let username_clone = username.clone();
     let check_subscription_still_active = tokio::spawn(async move {
         // save the time at this point
         let connection_time = tokio::time::Instant::now();
@@ -596,10 +587,9 @@ async fn axum_handle_socket(
 
                 if !connection_state_clone.is_client_still_active(&client_address) {
                     info!(
-                        "Client {} Disconnected or subscription no longer active. ending check task",
-                        &client_address_clone
+                        "Client {} {} Disconnected or subscription no longer active. ending check task",
+                        &client_address_clone, &username_clone
                     );
-                    info!("returning");
                     return;
                 }
 
@@ -635,6 +625,7 @@ async fn axum_handle_socket(
 
     let recv_task_connection_state = connection_state.clone();
     let recv_task_client_address = client_address;
+    let recv_task_username = username.clone();
     // let recv_task_tx = tx.clone();
 
     // this is unused but good to log incase there are incoming messages
@@ -689,6 +680,7 @@ async fn axum_handle_socket(
                                 recv_task_cbag_uri.clone(),
                                 recv_task_tx.clone(),
                                 market_data_type.clone(),
+                                &username.clone(),
                             );
                         }
                         MarketDataType::MarketDepthV1 => {
@@ -699,6 +691,7 @@ async fn axum_handle_socket(
                                 recv_task_cbag_uri.clone(),
                                 recv_task_tx.clone(),
                                 market_data_type.clone(),
+                                &username.clone(),
                             );
                         }
                         RestCostCalculatorV1RequestBody => {
@@ -861,12 +854,61 @@ async fn axum_handle_socket(
 }
 
 pub async fn get_state(
-    connection_state: State<ConnectionState>,
+    State(connection_state): State<ConnectionState>,
     Extension(uris): Extension<URIs>,
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
+    match check_token_and_authenticate(
+        &headers,
+        &Query(params),
+        &uris.auth_uri,
+        connection_state.clone(),
+    )
+    .await
+    {
+        Ok(_) => (),
+        Err(_) => {
+            return Response::builder()
+                .status(StatusCode::UNAUTHORIZED)
+                .body(Body::from("Unauthorized".to_string()))
+                .unwrap()
+        }
+    }
+
     let json_string = connection_state.to_json();
     Response::builder()
         .status(StatusCode::OK)
         .body(Body::from(json_string))
         .unwrap()
+}
+
+pub async fn authenticate_user(
+    State(connection_state): State<ConnectionState>,
+    Extension(uris): Extension<URIs>,
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    match check_token_and_authenticate(
+        &headers,
+        &Query(params),
+        &uris.auth_uri,
+        connection_state.clone(),
+    )
+    .await
+    {
+        Ok(_) => Response::builder()
+            .status(StatusCode::OK)
+            .body(Body::from("Authorized".to_string()))
+            .unwrap(),
+        Err(_) => Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Body::from("Unauthorized".to_string()))
+            .unwrap(),
+    }
+
+    // Response::builder()
+    //     .status(StatusCode::OK)
+    //     .body(Body::from("Authorized".to_string()))
+    //     .unwrap()
 }
