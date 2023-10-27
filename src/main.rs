@@ -112,10 +112,6 @@ async fn main() {
                 .make_span_with(DefaultMakeSpan::default().include_headers(true)),
         );
 
-    // run our app with hyper, listening globally on port 3000
-    // let listener = tokio::net::TcpListener::bind("0.0.0.0:9089").await.unwrap();
-    // axum::serve(listener, app).await.unwrap();
-
     let addr = if args.prod {
         SocketAddr::from(([0, 0, 0, 0], port))
     } else {
