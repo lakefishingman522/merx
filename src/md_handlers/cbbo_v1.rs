@@ -91,13 +91,25 @@ pub fn handle_subscription(
             .unwrap();
     }
 
+    let all_cbag_markets = match connection_state.get_all_cbag_markets_string(username){
+        Ok(markets) => markets,
+        Err(e) => {
+            sender
+                .try_send(axum::extract::ws::Message::Text(
+                    serde_json::json!({"error": e}).to_string(),
+                ))
+                .unwrap();
+            return;
+        }
+    };
+
     let ws_endpoint: String = format!(
         "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&source={}&user={}",
         parsed_sub_msg.currency_pair,
         parsed_sub_msg.size_filter,
         1000,
         "merckx",
-        "merckx",
+        all_cbag_markets,
         "merckx"
     );
 
