@@ -15,9 +15,12 @@ mod functions;
 mod md_handlers;
 mod routes_config;
 mod state;
+mod user;
 
 // import functions.rs
-use merckx::functions::{axum_ws_handler, fallback, forward_request, get_state, root, URIs};
+use merckx::functions::{
+    authenticate_user, axum_ws_handler, fallback, forward_request, get_state, root, URIs,
+};
 use merckx::state::{ConnectionState, ConnectionStateStruct};
 
 use merckx::md_handlers::rest_cost_calculator_v1;
@@ -84,6 +87,7 @@ async fn main() {
         // REST endpoints
         .route("/version", get(forward_request))
         .route("/state", get(get_state))
+        .route("/authenticate_user", get(authenticate_user))
         // .route("/book/:symbol", get(forward_request))
         // .route("/properties/:symbol", get(forward_request))
         // .route("/legacy-cbbo/:symbol", get(forward_request))
