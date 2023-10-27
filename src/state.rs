@@ -19,7 +19,7 @@ use tracing::{error, info, warn};
 use crate::{
     md_handlers::{cbbo_v1, market_depth_v1},
     routes_config::MarketDataType,
-    user::{Users, UserResponse, User}
+    user::{User, UserResponse, Users},
 };
 
 pub type Tx = Sender<axum::extract::ws::Message>;
@@ -187,10 +187,11 @@ impl ConnectionStateStruct {
         serde_json::to_string(&subscription_state_json).unwrap()
     }
 
-    pub fn add_or_update_user(&self,
-    token: &str,
-    user_response: &UserResponse)
-    -> Result<String, String>{
+    pub fn add_or_update_user(
+        &self,
+        token: &str,
+        user_response: &UserResponse,
+    ) -> Result<String, String> {
         let mut users = self.users.write().unwrap();
         users.add_or_update_user(token, &user_response)
     }
@@ -200,12 +201,20 @@ impl ConnectionStateStruct {
         users.check_user_in_state(token)
     }
 
-    pub fn validate_exchanges_string(&self, username: &str, exchanges_string: &str) -> Result<String, String> {
+    pub fn validate_exchanges_string(
+        &self,
+        username: &str,
+        exchanges_string: &str,
+    ) -> Result<String, String> {
         let users = self.users.read().unwrap();
         users.validate_exchanges_string(username, exchanges_string)
     }
 
-    pub fn validate_exchanges_vector(&self, username: &str, exchanges: &Vec<String>) -> Result<String, String> {
+    pub fn validate_exchanges_vector(
+        &self,
+        username: &str,
+        exchanges: &Vec<String>,
+    ) -> Result<String, String> {
         let users = self.users.read().unwrap();
         users.validate_exchanges_vector(username, &exchanges)
     }
