@@ -51,6 +51,7 @@ pub fn handle_subscription(
     cbag_uri: String,
     sender: Tx,
     market_data_type: MarketDataType,
+    username: &str,
 ) {
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
         Ok(msg) => msg,
