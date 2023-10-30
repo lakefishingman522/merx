@@ -130,9 +130,9 @@ pub fn handle_subscription(
         parsed_sub_msg.currency_pair,
         parsed_sub_msg.size_filter,
         1000,
-        "merckx",
+        "merx",
         all_cbag_markets,
-        "merckx"
+        "merx"
     );
 
     connection_state.add_client_to_subscription(
