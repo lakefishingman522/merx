@@ -23,6 +23,8 @@ use axum::{
     TypedHeader,
 };
 
+use axum::headers;
+
 //allows to extract the IP of connecting user
 use axum::extract::connect_info::ConnectInfo;
 use axum::extract::ws::CloseFrame;
@@ -911,4 +913,49 @@ pub async fn authenticate_user(
     //     .status(StatusCode::OK)
     //     .body(Body::from("Authorized".to_string()))
     //     .unwrap()
+}
+
+pub async fn currency_pairs(
+    State(connection_state): State<ConnectionState>,
+    Extension(uris): Extension<URIs>,
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    match check_token_and_authenticate(
+        &headers,
+        &Query(params),
+        &uris.auth_uri,
+        connection_state.clone(),
+    )
+    .await
+    {
+        Ok(_) => {
+            match connection_state.get_currency_pairs_json() {
+                Ok(currency_pairs_json_string) => {
+                    use serde_json::json;
+
+                    return Response::builder()
+                        .status(StatusCode::OK)
+                        .header("content-type", "application/json")
+                        .body(Body::from(currency_pairs_json_string))
+                        .unwrap();
+                }
+                Err(err) => {
+                    error!("Error getting currency pairs: {}", err);
+                    return Response::builder()
+                        .status(StatusCode::SERVICE_UNAVAILABLE)
+                        .body(Body::from(
+                            "Awaiting currency pairs, please try later".to_string(),
+                        ))
+                        .unwrap();
+                }
+            };
+        }
+        Err(_) => {
+            return Response::builder()
+                .status(StatusCode::UNAUTHORIZED)
+                .body(Body::from("Unauthorized".to_string()))
+                .unwrap()
+        }
+    }
 }

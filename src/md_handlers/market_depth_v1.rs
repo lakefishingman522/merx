@@ -32,6 +32,16 @@ pub fn handle_subscription(
     market_data_type: MarketDataType,
     username: &str,
 ) {
+    //check that state is ready
+    if !connection_state.is_ready() {
+        sender
+            .try_send(axum::extract::ws::Message::Text(
+                serde_json::json!({"error": "Server initializing, please try later"}).to_string(),
+            ))
+            .unwrap();
+        return;
+    }
+
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
         Ok(msg) => msg,
         Err(e) => {
@@ -46,6 +56,16 @@ pub fn handle_subscription(
             return;
         }
     };
+
+    //check that the currency pair is valid
+    if !connection_state.is_pair_valid(&parsed_sub_msg.currency_pair) {
+        sender
+            .try_send(axum::extract::ws::Message::Text(
+                serde_json::json!({"error": "invalid currency pair"}).to_string(),
+            ))
+            .unwrap();
+        return;
+    }
 
     //check that the depth limit is between 1-200
     if let Some(depth_limit) = parsed_sub_msg.depth_limit {
