@@ -19,6 +19,7 @@ use tracing::{error, info, warn};
 use crate::{
     md_handlers::{cbbo_v1, market_depth_v1},
     routes_config::MarketDataType,
+    symbols::{CurrencyPairsResponse, Symbols},
     user::{User, UserResponse, Users},
 };
 
@@ -50,6 +51,7 @@ pub struct ConnectionStateStruct {
     pub subscription_state: RwLock<SubscriptionState>,
     pub subscription_count: RwLock<SubscriptionCount>,
     pub users: RwLock<Users>,
+    pub symbols: RwLock<Symbols>,
 }
 
 pub type ConnectionState = Arc<ConnectionStateStruct>;
@@ -222,6 +224,11 @@ impl ConnectionStateStruct {
     pub fn get_all_cbag_markets_string(&self, username: &str) -> Result<String, String> {
         let users = self.users.read().unwrap();
         users.get_all_cbag_markets_string(username)
+    }
+
+    pub fn add_or_update_symbols(&self, symbols_update: Symbols) -> Result<(), String> {
+        let mut symbols_lock = self.symbols.write().unwrap();
+        symbols_lock.add_or_update_symbols(symbols_update)
     }
 }
 
