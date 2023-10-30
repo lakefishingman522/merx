@@ -115,8 +115,10 @@ async fn main() {
         // .route("/ws/bookstats/:symbol", get(axum_ws_handler))
         // .route("/ws/legacy-cbbo/:symbol", get(axum_ws_handler))
         // .route("/ws/cost-calculator/:symbol", get(axum_ws_handler))
-        .route("/api/streaming/cbbo", get(axum_ws_handler)) //TODO: slash helper
-        .route("/api/streaming/market_depth", get(axum_ws_handler)) //TODO: slash helper
+        .route("/api/streaming/cbbo", get(axum_ws_handler))
+        .route("/api/streaming/cbbo/", get(axum_ws_handler))
+        .route("/api/streaming/market_depth", get(axum_ws_handler))
+        .route("/api/streaming/market_depth/", get(axum_ws_handler))
         .fallback(fallback)
         .with_state(connection_state.clone())
         .layer(Extension(uris))
