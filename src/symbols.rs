@@ -51,35 +51,17 @@ pub struct Symbols {
 }
 
 impl Symbols {
-    // pub fn add_or_update_symbols(
-    //     &mut self,
-    //     currency_pairs_response_vec: &Vec<CurrencyPairsResponse>,
-    // )->Result<(), String> {
-    //     //TODO: this is done under a write lock, not good
-    //     let cbbo_sizes: HashMap<String, Vec<f64>> = HashMap::new();
-    //     for currency_pair in currency_pairs_response_vec {
-    //         let mut cbbo_sizes_vec = Vec::new();
-    //         for cbbo_size in &currency_pair.target_currency.cbbo_sizes {
-    //                 //convert to f64
-    //                 let cbbo_size = match cbbo_size.size.parse::<f64>() {
-    //                     Ok(cbbo_size) => cbbo_size,
-    //                     Err(e) => {
-    //                         info!("Unable to parse cbbo_size: {:?}", e);
-    //                         return Err("Unable to parse cbbo_size".to_string());
-    //                     }
-    //                 };
-    //                 cbbo_sizes_vec.push(cbbo_size);
-    //         }
-    //         self.cbbo_sizes.insert(currency_pair.slug.clone(), cbbo_sizes_vec);
-    //     }
-    //     self.cbbo_sizes = cbbo_sizes;
-    //     self.time_validated = Utc::now();
-    //     Ok(())
-    // }
-
     pub fn add_or_update_symbols(&mut self, symbols: Symbols) -> Result<(), String> {
         self.cbbo_sizes = symbols.cbbo_sizes.clone();
         self.time_validated = Utc::now();
         Ok(())
+    }
+
+    pub fn has_symbols(&self) -> bool {
+        !self.cbbo_sizes.is_empty()
+    }
+
+    pub fn is_pair_valid(&self, pair: &str) -> bool {
+        self.cbbo_sizes.contains_key(pair)
     }
 }

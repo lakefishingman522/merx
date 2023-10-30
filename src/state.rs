@@ -230,6 +230,18 @@ impl ConnectionStateStruct {
         let mut symbols_lock = self.symbols.write().unwrap();
         symbols_lock.add_or_update_symbols(symbols_update)
     }
+
+    // general function to check state has what it needs to start
+    // accepting subscriptions
+    pub fn is_ready(&self) -> bool {
+        let symbols_lock = self.symbols.read().unwrap();
+        symbols_lock.has_symbols()
+    }
+
+    pub fn is_pair_valid(&self, pair: &str) -> bool {
+        let symbols_lock = self.symbols.read().unwrap();
+        symbols_lock.is_pair_valid(pair)
+    }
 }
 
 #[allow(unused_assignments)]

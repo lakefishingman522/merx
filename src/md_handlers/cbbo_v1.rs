@@ -68,6 +68,16 @@ pub fn handle_subscription(
         }
     };
 
+    //validate the currency pair
+    if !connection_state.is_pair_valid(&parsed_sub_msg.currency_pair) {
+        sender
+            .try_send(axum::extract::ws::Message::Text(
+                serde_json::json!({"error": "invalid currency pair"}).to_string(),
+            ))
+            .unwrap();
+        return;
+    }
+
     let parsed_size_filter: f64 = match parsed_sub_msg.size_filter.parse() {
         Ok(size_filter) => size_filter,
         Err(e) => {
