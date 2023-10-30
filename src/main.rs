@@ -2,6 +2,7 @@ use argh::FromArgs;
 use axum::extract::Extension;
 use axum::routing::post;
 use axum::{routing::get, Router};
+use std::sync::Arc;
 use std::{net::SocketAddr, sync::RwLock};
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing::info;
@@ -16,15 +17,16 @@ mod md_handlers;
 mod routes_config;
 mod state;
 mod symbols;
+mod tasks;
 mod user;
 
 // import functions.rs
 use merckx::functions::{
     authenticate_user, axum_ws_handler, fallback, forward_request, get_state, root, URIs,
 };
-use merckx::state::{ConnectionState, ConnectionStateStruct};
-
 use merckx::md_handlers::rest_cost_calculator_v1;
+use merckx::state::ConnectionState;
+use merckx::tasks::start_pull_symbols_task;
 
 #[derive(FromArgs)]
 /// Merckx is a market data handler
@@ -36,6 +38,10 @@ struct Args {
     /// the uri for the authentication server. This is normally portal.coinroutes.com
     #[argh(option, default = "String::from(\"none\")")]
     auth_uri: String,
+
+    /// auth token used to pull currency pairs. This is a token that can be authenticated on portal
+    #[argh(option, default = "String::from(\"none\")")]
+    token: String,
 
     /// optional: specify port for gRPC server. 5050 by default
     #[argh(option, default = "5050")]
@@ -62,6 +68,9 @@ async fn main() {
     if args.auth_uri == "none" {
         panic!("auth-uri is required")
     }
+    if args.token == "none" {
+        panic!("token is required")
+    }
     let uris = URIs {
         cbag_uri: args.cbag_uri.clone(),
         auth_uri: args.auth_uri.clone(),
@@ -77,9 +86,13 @@ async fn main() {
 
     // connection state which will hold a state of all subscriptions
     // and their respective clients
-    let connection_state = ConnectionState::new(ConnectionStateStruct::default());
+    let connection_state = ConnectionState::default();
     // will hold the number of subscriptions per client. Useful for knowing
     // when to disconnect from the websocket session
+
+    //start the pull symbols task•
+    let pull_symbols_task =
+        start_pull_symbols_task(connection_state.clone(), uris.auth_uri.clone(), args.token).await;
 
     // build our application with a route
     let app = Router::new()
