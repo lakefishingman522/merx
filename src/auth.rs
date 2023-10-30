@@ -64,7 +64,7 @@ pub async fn authenticate_token(
     let res = client
         .get(auth_address)
         .header("Authorization", format!("Token {}", token))
-        .header(reqwest::header::USER_AGENT, "merckx")
+        .header(reqwest::header::USER_AGENT, "merx")
         .send()
         .await;
 
@@ -144,7 +144,7 @@ pub async fn get_symbols(
     let res = client
         .get(currency_pairs_address)
         .header("Authorization", format!("Token {}", token))
-        .header(reqwest::header::USER_AGENT, "merckx")
+        .header(reqwest::header::USER_AGENT, "merx")
         .send()
         .await;
 

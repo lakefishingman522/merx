@@ -6,8 +6,8 @@ use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use merckx::functions::*;
-use merckx::state::ConnectionState;
+use merx::functions::*;
+use merx::state::ConnectionState;
 
 #[derive(FromArgs)]
 /// A Market Data Proxy for CBAG market data requests

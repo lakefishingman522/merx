@@ -21,16 +21,16 @@ mod tasks;
 mod user;
 
 // import functions.rs
-use merckx::functions::{
+use merx::functions::{
     authenticate_user, axum_ws_handler, currency_pairs, fallback, forward_request, get_state, root,
     URIs,
 };
-use merckx::md_handlers::rest_cost_calculator_v1;
-use merckx::state::ConnectionState;
-use merckx::tasks::start_pull_symbols_task;
+use merx::md_handlers::rest_cost_calculator_v1;
+use merx::state::ConnectionState;
+use merx::tasks::start_pull_symbols_task;
 
 #[derive(FromArgs)]
-/// Merckx is a market data handler
+/// Merx is a market data handler
 struct Args {
     /// the uri for the cbag. Can be cbag load balancer
     #[argh(option, default = "String::from(\"none\")")]
@@ -48,7 +48,7 @@ struct Args {
     #[argh(option, default = "5050")]
     port: u16,
 
-    /// optional: if you want to run merckx in production mode. Will serve on 0.0.0.0
+    /// optional: if you want to run mercx in production mode. Will serve on 0.0.0.0
     #[argh(switch)]
     prod: bool,
 }
@@ -80,7 +80,7 @@ async fn main() {
     // let auth_uri = args.auth_uri.clone();
     let port = args.port;
 
-    info!("Running Merckx");
+    info!("Running Merx");
     info!("CBAG Uri  : {}", uris.cbag_uri);
     info!("Auth Server Uri  : {}", uris.auth_uri);
     info!("Proxy port: {}", port);
@@ -137,7 +137,7 @@ async fn main() {
         SocketAddr::from(([127, 0, 0, 1], port))
     };
 
-    info!("Starting Merckx Server on {}", addr);
+    info!("Starting Merx Server on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
         .await
