@@ -155,8 +155,17 @@ pub async fn get_symbols(
                 return Err(format!("Unable to get currency pairs: {}", res.status()));
             }
 
+            let json_string = match res.text().await {
+                Ok(json_string) => json_string,
+                Err(e) => {
+                    error!("Unable to get currency pairs: {:?}", e);
+                    return Err("Unable to get currency pairs".to_string());
+                }
+            };
+
             // parse into a vector of currencyPairsResponse
-            let currency_pairs_response: Result<Vec<CurrencyPairsResponse>, _> = res.json().await;
+            let currency_pairs_response: Result<Vec<CurrencyPairsResponse>, _> =
+                serde_json::from_str(json_string.as_str());
             match currency_pairs_response {
                 Ok(currency_pairs_response) => {
                     let symbols_update = if let Ok(symbols) =
@@ -167,7 +176,7 @@ pub async fn get_symbols(
                         return Err("Unable to parse currency pairs response".to_string());
                     };
 
-                    match connection_state.add_or_update_symbols(symbols_update, "".to_string()) {
+                    match connection_state.add_or_update_symbols(symbols_update, json_string) {
                         Ok(_) => {
                             info!("Added symbols to connection state");
                             return Ok(());

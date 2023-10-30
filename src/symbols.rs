@@ -85,4 +85,12 @@ impl Symbols {
         }
         return Err("Invalid currency pair".to_string());
     }
+
+    pub fn get_currency_pairs_json(&self) -> Result<String, String> {
+        // if there are no symbols return an error
+        if !self.has_symbols() {
+            return Err("Awaiting symbol data".to_string());
+        }
+        Ok(self.currency_pairs_json_response.clone())
+    }
 }

@@ -251,6 +251,11 @@ impl ConnectionStateStruct {
         let symbols_lock = self.symbols.read().unwrap();
         symbols_lock.is_size_filter_valid(pair, size_filter)
     }
+
+    pub fn get_currency_pairs_json(&self) -> Result<String, String> {
+        let symbols_lock = self.symbols.read().unwrap();
+        symbols_lock.get_currency_pairs_json()
+    }
 }
 
 #[allow(unused_assignments)]

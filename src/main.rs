@@ -22,7 +22,8 @@ mod user;
 
 // import functions.rs
 use merckx::functions::{
-    authenticate_user, axum_ws_handler, fallback, forward_request, get_state, root, URIs,
+    authenticate_user, axum_ws_handler, currency_pairs, fallback, forward_request, get_state, root,
+    URIs,
 };
 use merckx::md_handlers::rest_cost_calculator_v1;
 use merckx::state::ConnectionState;
@@ -102,6 +103,8 @@ async fn main() {
         .route("/version", get(forward_request))
         .route("/state", get(get_state))
         .route("/authenticate_user", get(authenticate_user))
+        .route("/api/currency_pairs", get(currency_pairs))
+        .route("/api/currency_pairs/", get(currency_pairs))
         // .route("/book/:symbol", get(forward_request))
         // .route("/properties/:symbol", get(forward_request))
         // .route("/legacy-cbbo/:symbol", get(forward_request))
