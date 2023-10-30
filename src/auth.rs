@@ -167,7 +167,7 @@ pub async fn get_symbols(
                         return Err("Unable to parse currency pairs response".to_string());
                     };
 
-                    match connection_state.add_or_update_symbols(symbols_update) {
+                    match connection_state.add_or_update_symbols(symbols_update, "".to_string()) {
                         Ok(_) => {
                             info!("Added symbols to connection state");
                             return Ok(());

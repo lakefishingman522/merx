@@ -226,9 +226,13 @@ impl ConnectionStateStruct {
         users.get_all_cbag_markets_string(username)
     }
 
-    pub fn add_or_update_symbols(&self, symbols_update: Symbols) -> Result<(), String> {
+    pub fn add_or_update_symbols(
+        &self,
+        symbols_update: Symbols,
+        response_json_string: String,
+    ) -> Result<(), String> {
         let mut symbols_lock = self.symbols.write().unwrap();
-        symbols_lock.add_or_update_symbols(symbols_update)
+        symbols_lock.add_or_update_symbols(symbols_update, response_json_string)
     }
 
     // general function to check state has what it needs to start
@@ -241,6 +245,11 @@ impl ConnectionStateStruct {
     pub fn is_pair_valid(&self, pair: &str) -> bool {
         let symbols_lock = self.symbols.read().unwrap();
         symbols_lock.is_pair_valid(pair)
+    }
+
+    pub fn is_size_filter_valid(&self, pair: &str, size_filter: f64) -> Result<(), String> {
+        let symbols_lock = self.symbols.read().unwrap();
+        symbols_lock.is_size_filter_valid(pair, size_filter)
     }
 }
 

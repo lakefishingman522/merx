@@ -101,6 +101,18 @@ pub fn handle_subscription(
             .unwrap();
     }
 
+    //validate the size filter is valid
+    if let Err(e) =
+        connection_state.is_size_filter_valid(&parsed_sub_msg.currency_pair, parsed_size_filter)
+    {
+        sender
+            .try_send(axum::extract::ws::Message::Text(
+                serde_json::json!({ "error": e }).to_string(),
+            ))
+            .unwrap();
+        return;
+    }
+
     let all_cbag_markets = match connection_state.get_all_cbag_markets_string(username) {
         Ok(markets) => markets,
         Err(e) => {

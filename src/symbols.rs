@@ -47,12 +47,18 @@ pub struct CurrencyPairsResponse {
 #[derive(Default)]
 pub struct Symbols {
     pub cbbo_sizes: HashMap<String, Vec<f64>>,
+    currency_pairs_json_response: String,
     time_validated: DateTime<Utc>,
 }
 
 impl Symbols {
-    pub fn add_or_update_symbols(&mut self, symbols: Symbols) -> Result<(), String> {
+    pub fn add_or_update_symbols(
+        &mut self,
+        symbols: Symbols,
+        currency_pairs_json: String,
+    ) -> Result<(), String> {
         self.cbbo_sizes = symbols.cbbo_sizes.clone();
+        self.currency_pairs_json_response = currency_pairs_json;
         self.time_validated = Utc::now();
         Ok(())
     }
@@ -63,5 +69,20 @@ impl Symbols {
 
     pub fn is_pair_valid(&self, pair: &str) -> bool {
         self.cbbo_sizes.contains_key(pair)
+    }
+
+    pub fn is_size_filter_valid(&self, pair: &str, size_filter: f64) -> Result<(), String> {
+        if let Some(cbbo_sizes) = self.cbbo_sizes.get(pair) {
+            for cbbo_size in cbbo_sizes {
+                if size_filter == *cbbo_size {
+                    return Ok(());
+                }
+            }
+            return Err(format!(
+                "{} is an invalid size filter for {}. Available size filters are {:?}",
+                size_filter, pair, cbbo_sizes
+            ));
+        }
+        return Err("Invalid currency pair".to_string());
     }
 }
