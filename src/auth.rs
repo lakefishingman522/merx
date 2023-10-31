@@ -77,7 +77,7 @@ pub async fn authenticate_token(
                     Ok(user_response) => {
                         match connection_state.add_or_update_user(token, &user_response) {
                             Ok(username) => {
-                                info!("Added user to connection state: {} {}", username, token);
+                                info!("Added user to connection state: {}", username);
                                 return Ok(username);
                             }
                             Err(e) => {
