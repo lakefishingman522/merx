@@ -38,7 +38,7 @@ use crate::md_handlers::{cbbo_v1, market_depth_v1};
 use crate::routes_config::{MarketDataType, SubscriptionType, ROUTES, SUB_TYPE};
 use crate::state::ConnectionState;
 use crate::{
-    auth::{authenticate_token, check_token_and_authenticate},
+    auth::check_token_and_authenticate,
     md_handlers::rest_cost_calculator_v1::RestCostCalculatorV1RequestBody,
 };
 
@@ -69,6 +69,7 @@ lazy_static! {
 #[derive(Clone)]
 pub struct URIs {
     pub cbag_uri: String,
+    pub cbag_depth_uri: String,
     pub auth_uri: String,
 }
 
@@ -397,12 +398,14 @@ pub async fn axum_ws_handler(
     }
     let subscription_type = SUB_TYPE.get(&base_route.to_string()).unwrap();
 
+    let auth_uri = uris.auth_uri.clone();
+    let uris_clone = uris.clone();
     // if this isn't a direct subscription, then we have to authenticate
     let username = if !matches!(subscription_type, SubscriptionType::DIRECT) {
         match check_token_and_authenticate(
             &headers,
             &Query(params),
-            &uris.auth_uri,
+            &auth_uri,
             connection_state.clone(),
         )
         .await
@@ -424,7 +427,7 @@ pub async fn axum_ws_handler(
             addr,
             original_uri,
             connection_state,
-            uris.cbag_uri,
+            uris_clone,
             route,
             subscription_type,
             username.clone(),
@@ -504,7 +507,7 @@ async fn axum_handle_socket(
     client_address: SocketAddr,
     request_endpoint: Uri,
     connection_state: ConnectionState,
-    cbag_uri: String,
+    uris: URIs,
     market_data_type: &MarketDataType,
     subscription_type: &SubscriptionType,
     username: String,
@@ -518,7 +521,8 @@ async fn axum_handle_socket(
 
     let request_endpoint_str = request_endpoint.to_string();
     let recv_task_tx = tx.clone();
-    let recv_task_cbag_uri = cbag_uri.clone();
+    let recv_task_cbag_uri = uris.cbag_uri.clone();
+    let recv_task_cbag_depth_uri = uris.cbag_depth_uri.clone();
     let (mut outgoing, incoming) = websocket.split();
 
     // add the client to the connection state. If the url isn't already subscribed
@@ -533,7 +537,7 @@ async fn axum_handle_socket(
         connection_state.add_client_to_subscription(
             &client_address,
             &request_endpoint_str,
-            cbag_uri,
+            uris.cbag_uri,
             tx,
             market_data_type.clone(),
             Arc::clone(&connection_state),
@@ -626,8 +630,6 @@ async fn axum_handle_socket(
     // });
 
     let recv_task_connection_state = connection_state.clone();
-    let recv_task_client_address = client_address;
-    let recv_task_username = username.clone();
     // let recv_task_tx = tx.clone();
 
     // this is unused but good to log incase there are incoming messages
@@ -690,7 +692,7 @@ async fn axum_handle_socket(
                                 &client_address,
                                 &recv_task_connection_state,
                                 msg_str,
-                                recv_task_cbag_uri.clone(),
+                                recv_task_cbag_depth_uri.clone(),
                                 recv_task_tx.clone(),
                                 market_data_type.clone(),
                                 &username.clone(),

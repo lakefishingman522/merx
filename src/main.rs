@@ -2,8 +2,7 @@ use argh::FromArgs;
 use axum::extract::Extension;
 use axum::routing::post;
 use axum::{routing::get, Router};
-use std::sync::Arc;
-use std::{net::SocketAddr, sync::RwLock};
+use std::net::SocketAddr;
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -11,16 +10,15 @@ use tracing_subscriber::EnvFilter;
 // use cade_md_proxy::subscribe_to_market_data;
 // mod functions;
 
-mod auth;
-mod functions;
-mod md_handlers;
-mod routes_config;
-mod state;
-mod symbols;
-mod tasks;
-mod user;
+// mod auth;
+// mod functions;
+// mod md_handlers;
+// mod routes_config;
+// mod state;
+// mod symbols;
+// mod tasks;
+// mod users;
 
-// import functions.rs
 use merx::functions::{
     authenticate_user, axum_ws_handler, currency_pairs, fallback, forward_request, get_state, root,
     URIs,
@@ -35,6 +33,10 @@ struct Args {
     /// the uri for the cbag. Can be cbag load balancer
     #[argh(option, default = "String::from(\"none\")")]
     cbag_uri: String,
+
+    /// the uri for the cbag. Can be cbag load balancer
+    #[argh(option, default = "String::from(\"none\")")]
+    cbag_depth_uri: String,
 
     /// the uri for the authentication server. This is normally portal.coinroutes.com
     #[argh(option, default = "String::from(\"none\")")]
@@ -75,6 +77,11 @@ async fn main() {
     let uris = URIs {
         cbag_uri: args.cbag_uri.clone(),
         auth_uri: args.auth_uri.clone(),
+        cbag_depth_uri: if args.cbag_depth_uri == "none" {
+            args.cbag_uri.clone()
+        } else {
+            args.cbag_depth_uri.clone()
+        },
     };
     // let cbag_uri = args.cbag_uri.clone();
     // let auth_uri = args.auth_uri.clone();
@@ -92,7 +99,7 @@ async fn main() {
     // when to disconnect from the websocket session
 
     //start the pull symbols task•
-    let pull_symbols_task =
+    let _pull_symbols_task =
         start_pull_symbols_task(connection_state.clone(), uris.auth_uri.clone(), args.token).await;
 
     // build our application with a route
