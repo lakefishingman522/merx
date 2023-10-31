@@ -934,8 +934,6 @@ pub async fn currency_pairs(
         Ok(_) => {
             match connection_state.get_currency_pairs_json() {
                 Ok(currency_pairs_json_string) => {
-                    use serde_json::json;
-
                     return Response::builder()
                         .status(StatusCode::OK)
                         .header("content-type", "application/json")

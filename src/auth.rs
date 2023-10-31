@@ -26,7 +26,6 @@ pub async fn check_token_and_authenticate(
             return Err("Unable to parse token".to_string());
         };
         token
-        // info!("Authorization: {}", token);
     } else if let Some(token) = params.get("token") {
         token
     } else {

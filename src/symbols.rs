@@ -1,6 +1,4 @@
 use chrono::prelude::*;
-use chrono::Duration;
-use log::info;
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
