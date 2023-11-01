@@ -73,12 +73,10 @@ pub fn handle_subscription(
     if !connection_state.is_pair_valid(&parsed_sub_msg.currency_pair) {
         sender
             .try_send(axum::extract::ws::Message::Text(
-                // send back a MerxErrorResponse serialized
-                serde_json::to_string(&MerxErrorResponse::new(
+                MerxErrorResponse::new(
                     ErrorCode::InvalidCurrencyPair,
-                    None,
-                )).unwrap()
-                // serde_json::json!({"error": "invalid currency pair"}).to_string(),
+                    Some("Please check currency pair"),
+                ).to_json_str()              
             ))
             .unwrap();
         return;
