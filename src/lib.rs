@@ -6,3 +6,4 @@ pub mod state;
 pub mod symbols;
 pub mod tasks;
 pub mod user;
+pub mod error;

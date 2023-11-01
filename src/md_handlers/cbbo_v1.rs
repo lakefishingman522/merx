@@ -1,5 +1,6 @@
 use crate::md_handlers::helper::cbag_market_to_exchange;
 use crate::{routes_config::MarketDataType, state::ConnectionState};
+use crate::error::{ErrorCode, MerxErrorResponse};
 // use futures_channel::mpsc::Sender;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -72,7 +73,12 @@ pub fn handle_subscription(
     if !connection_state.is_pair_valid(&parsed_sub_msg.currency_pair) {
         sender
             .try_send(axum::extract::ws::Message::Text(
-                serde_json::json!({"error": "invalid currency pair"}).to_string(),
+                // send back a MerxErrorResponse serialized
+                serde_json::to_string(&MerxErrorResponse::new(
+                    ErrorCode::InvalidCurrencyPair,
+                    None,
+                )).unwrap()
+                // serde_json::json!({"error": "invalid currency pair"}).to_string(),
             ))
             .unwrap();
         return;
