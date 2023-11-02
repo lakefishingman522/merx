@@ -1,9 +1,11 @@
 use axum::{extract::Query, http::HeaderMap};
+use chrono::Duration;
 use reqwest::Client;
 use std::collections::HashMap;
 
 // import UserResponse struct
 use crate::{
+    error::ErrorCode,
     state::ConnectionState,
     symbols::{CurrencyPairsResponse, Symbols},
     user::UserResponse,
@@ -36,18 +38,30 @@ pub async fn check_token_and_authenticate(
     } else {
         token
     };
-    if let Some(username) = connection_state.check_user_in_state(token) {
+    if let Some(username) = connection_state.check_user_in_state(token, Some(Duration::minutes(5)))
+    {
         return Ok(username);
     }
 
-    match authenticate_token(auth_uri, token, connection_state).await {
-        Ok(user) => {
-            // authenticated ok
-            Ok(user)
-        }
-        Err(_) => {
-            warn!("Unable to authenticate token");
-            Err("Unable to authenticate token".to_string())
+    match authenticate_token(auth_uri, token, connection_state.clone()).await {
+        Ok(user) => Ok(user),
+        Err(error_code) => {
+            match error_code {
+                ErrorCode::InvalidToken => {
+                    warn!("Invalid token");
+                    return Err("Invalid token".to_string());
+                }
+                _ => {
+                    // if we were unable to authenticate the token for any other reason
+                    // we recheck the cached tokens without a validity duration and
+                    // allow an authentication even if its been cached for a while
+                    if let Some(username) = connection_state.check_user_in_state(token, None) {
+                        return Ok(username);
+                    }
+                    warn!("Auth service unavailable");
+                    return Err("Auth service unavailable".to_string());
+                }
+            }
         }
     }
 }
@@ -56,53 +70,66 @@ pub async fn authenticate_token(
     auth_uri: &str,
     token: &str,
     connection_state: ConnectionState,
-) -> Result<String, String> {
+) -> Result<String, ErrorCode> {
     let client = Client::new();
     let auth_address = format!("https://{}/api/user/", auth_uri);
 
-    let res = client
-        .get(auth_address)
-        .header("Authorization", format!("Token {}", token))
-        .header(reqwest::header::USER_AGENT, "merx")
-        .send()
-        .await;
+    let mut attempts: u8 = 0;
+    let max_attempts = 4;
+    loop {
+        attempts += 1;
+        let res = client
+            .get(auth_address.clone())
+            .header("Authorization", format!("Token {}", token))
+            .header(reqwest::header::USER_AGENT, "merx")
+            .send()
+            .await;
 
-    match res {
-        Ok(res) => match res.status() {
-            reqwest::StatusCode::OK => {
-                // parse the body into a user response but match incase it fails
-                let user_response: Result<UserResponse, _> = res.json().await;
-                match user_response {
-                    Ok(user_response) => {
-                        match connection_state.add_or_update_user(token, &user_response) {
-                            Ok(username) => {
-                                info!("Added user to connection state: {}", username);
-                                return Ok(username);
-                            }
-                            Err(e) => {
-                                error!("Unable to add user to connection state: {:?}", e);
-                                return Err("Unable to add user to connection state".to_string());
+        match res {
+            Ok(res) => match res.status() {
+                reqwest::StatusCode::OK => {
+                    // parse the body into a user response but match incase it fails
+                    let user_response: Result<UserResponse, _> = res.json().await;
+                    match user_response {
+                        Ok(user_response) => {
+                            match connection_state.add_or_update_user(token, &user_response) {
+                                Ok(username) => {
+                                    info!("Added user to connection state: {}", username);
+                                    return Ok(username);
+                                }
+                                Err(e) => {
+                                    error!("Unable to add user to connection state: {:?}", e);
+                                    return Err(ErrorCode::AuthInternalError);
+                                }
                             }
                         }
-                    }
-                    Err(e) => {
-                        error!("Unable to parse user response: {:?}", e);
-                        return Err("Unable to parse user response".to_string());
+                        Err(e) => {
+                            error!("Unable to parse user response: {:?}", e);
+                            return Err(ErrorCode::AuthInternalError);
+                        }
                     }
                 }
+                reqwest::StatusCode::UNAUTHORIZED => {
+                    warn!("unauthorized");
+                    return Err(ErrorCode::InvalidToken);
+                }
+                _ => {
+                    warn!("auth failed for with status {}", res.status());
+                    if attempts < max_attempts {
+                        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                        continue;
+                    }
+                    return Err(ErrorCode::AuthServiceUnavailable);
+                }
+            },
+            Err(e) => {
+                println!("error: {:?}", e);
+                if attempts < max_attempts {
+                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                    continue;
+                }
+                ErrorCode::AuthServiceUnavailable;
             }
-            _ => {
-                warn!(
-                    "auth failed for token {} with status {}",
-                    token,
-                    res.status()
-                );
-                Err("auth failed".to_string())
-            }
-        },
-        Err(e) => {
-            println!("error: {:?}", e);
-            Err("error: {:?}".to_string())
         }
     }
 }
@@ -114,6 +141,10 @@ fn parse_currency_pairs_response(
 ) -> Result<Symbols, String> {
     let mut symbols = Symbols::default();
     for currency_pair in currency_pairs_response_vec {
+        //ignore currency pairs that are not on any exchange
+        if currency_pair.exchanges.is_empty() {
+            continue;
+        }
         let mut cbbo_sizes_vec = Vec::new();
         for cbbo_size in &currency_pair.target_currency.cbbo_sizes {
             let cbbo_size = match cbbo_size.size.parse::<f64>() {

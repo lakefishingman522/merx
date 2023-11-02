@@ -198,9 +198,13 @@ impl ConnectionStateStruct {
         users.add_or_update_user(token, &user_response)
     }
 
-    pub fn check_user_in_state(&self, token: &str) -> Option<String> {
+    pub fn check_user_in_state(
+        &self,
+        token: &str,
+        valid_since_duration: Option<chrono::Duration>,
+    ) -> Option<String> {
         let users = self.users.read().unwrap();
-        users.check_user_in_state(token)
+        users.check_user_in_state(token, valid_since_duration)
     }
 
     pub fn validate_exchanges_string(
