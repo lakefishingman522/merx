@@ -19,6 +19,7 @@ use tracing_subscriber::EnvFilter;
 // mod tasks;
 // mod users;
 
+use merx::art::log_merx_title;
 use merx::functions::{
     authenticate_user, axum_ws_handler, currency_pairs, fallback, forward_request, get_state, root,
     URIs,
@@ -87,6 +88,7 @@ async fn main() {
     // let auth_uri = args.auth_uri.clone();
     let port = args.port;
 
+    log_merx_title();
     info!("Running Merx");
     info!("CBAG Uri  : {}", uris.cbag_uri);
     info!("Auth Server Uri  : {}", uris.auth_uri);

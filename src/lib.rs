@@ -1,3 +1,4 @@
+pub mod art;
 pub mod auth;
 pub mod error;
 pub mod functions;
