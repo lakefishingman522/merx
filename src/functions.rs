@@ -377,12 +377,8 @@ pub async fn axum_ws_handler(
         String::from("Unknown browser")
     };
     info!("{addr} connected User-Agent {user_agent}. Requesting subscription: {original_uri}");
-    info!("Auth Uri: {}", uris.auth_uri);
 
     let base_route = req.uri().path().trim_end_matches('/');
-
-    //log the base route
-    info!("base route {}", base_route);
 
     if !ROUTES.contains_key(&base_route) {
         warn!("Endpoint not available {}", base_route);
