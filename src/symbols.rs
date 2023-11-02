@@ -1,5 +1,5 @@
 use chrono::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +19,7 @@ pub struct CbboSize {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Exchange {
+pub struct Exchange {
     slug: String,
     name: String,
     api_name: Option<String>,
@@ -37,7 +37,7 @@ pub struct CurrencyPairsResponse {
     pub slug: String,
     pub target_currency: Currency,
     funding_currency: Currency,
-    exchanges: Vec<Exchange>,
+    pub exchanges: Vec<Exchange>,
     tick_size: String,
     product_type: String,
 }
