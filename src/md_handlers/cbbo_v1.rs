@@ -1,8 +1,9 @@
+use crate::error::{ErrorCode, MerxErrorResponse};
 use crate::md_handlers::helper::cbag_market_to_exchange;
 use crate::{routes_config::MarketDataType, state::ConnectionState};
-use crate::error::{ErrorCode, MerxErrorResponse};
 // use futures_channel::mpsc::Sender;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::sync::Arc;
 use std::{collections::HashMap, net::SocketAddr};
 use tokio::sync::mpsc::Sender;
@@ -36,12 +37,12 @@ struct LegacyCbboUpdate {
     markets: Vec<String>,
     bids: Vec<OrderLevel>,
     asks: Vec<OrderLevel>,
-    properties: HashMap<String, String>, //TODO: no idea what this is
-    last_rx_nanos: u64,
-    last_rx_nanos_market: String,
-    internal_latency_nanos: u64,
-    last_source_nanos: u64,
-    last_source_nanos_market: String,
+    properties: HashMap<String, Value>, //TODO: no idea what this is
+    last_rx_nanos: Option<u64>,
+    last_rx_nanos_market: Option<String>,
+    internal_latency_nanos: Option<u64>,
+    last_source_nanos: Option<u64>,
+    last_source_nanos_market: Option<String>,
 }
 
 //TODO should this implement a trait?
@@ -76,7 +77,8 @@ pub fn handle_subscription(
                 MerxErrorResponse::new(
                     ErrorCode::InvalidCurrencyPair,
                     Some("Please check currency pair"),
-                ).to_json_str()              
+                )
+                .to_json_str(),
             ))
             .unwrap();
         return;
@@ -157,6 +159,7 @@ pub fn transform_message(message: Message) -> Result<Message, String> {
     let mut parsed_message: LegacyCbboUpdate = match serde_json::from_str(&message.to_string()) {
         Ok(msg) => msg,
         Err(e) => {
+            tracing::error!("Error parsing message: {}", message);
             tracing::error!("Error parsing message: {}", e);
             return Err(format!("Error parsing message: {}", e));
         }
