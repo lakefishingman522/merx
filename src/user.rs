@@ -106,20 +106,26 @@ impl Users {
         Ok(username)
     }
 
-    pub fn check_user_in_state(&self, token: &str) -> Option<String> {
+    pub fn check_user_in_state(
+        &self,
+        token: &str,
+        validated_since_duration: Option<Duration>,
+    ) -> Option<String> {
         let user = self.users.values().find(|user| user.token == token);
         match user {
             Some(user) => {
                 info!("User found in state");
                 let now = Utc::now();
                 let time_validated = user.time_validated;
-                let duration = now.signed_duration_since(time_validated);
-                if duration > Duration::minutes(5) {
-                    //TODO: change this, it is hardcoded for now
-                    None
-                } else {
-                    Some(user.username.clone())
+                // if a validated since duration has been provided,
+                // check if validated within duration
+                if let Some(duration) = validated_since_duration {
+                    let duration_since_validated = now.signed_duration_since(time_validated);
+                    if duration_since_validated > duration {
+                        return None;
+                    }
                 }
+                Some(user.username.clone())
             }
             None => None,
         }
