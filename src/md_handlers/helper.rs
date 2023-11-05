@@ -21,7 +21,7 @@ pub fn cbag_market_to_exchange(market: &str) -> String {
 
 pub fn exchange_to_cbag_market(
     exchange: &str,
-    organization: &str,
+    client_id: &str,
     non_agg_prices: bool,
     customer_specific: bool,
     public: bool,
@@ -32,7 +32,7 @@ pub fn exchange_to_cbag_market(
         _ => exchange.to_uppercase(),
     };
     if customer_specific {
-        exchange_str = format!("{}-{}", organization, exchange_str);
+        exchange_str = format!("{}-{}", client_id, exchange_str);
     }
     if non_agg_prices {
         exchange_str.push_str("%23NA");

@@ -65,7 +65,7 @@ impl Users {
         for exchange_response in &user_response.exchanges {
             let cbag_market = exchange_to_cbag_market(
                 &exchange_response.slug,
-                &user_response.organization,
+                &user_response.client_id,
                 exchange_response.non_aggregated_prices,
                 exchange_response.customer_specific,
                 exchange_response.public,
