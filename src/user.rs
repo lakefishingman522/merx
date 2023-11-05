@@ -1,5 +1,6 @@
 use chrono::prelude::*;
 use chrono::Duration;
+//TODO: remove chrono and use tokio::time::Instant
 use std::collections::HashMap;
 
 use log::info;
@@ -54,6 +55,7 @@ pub struct User {
 pub struct Users {
     users: HashMap<String, User>,
     invalid_tokens: HashMap<String, DateTime<Utc>>,
+    attempted_auths: HashMap<String, DateTime<Utc>>,
 }
 
 impl Users {
@@ -136,6 +138,27 @@ impl Users {
 
     pub fn invalidate_token(&mut self, token: &str) {
         self.invalid_tokens.insert(token.to_string(), Utc::now());
+    }
+
+    pub fn add_attempted_auth(&mut self, token: &str) {
+        self.attempted_auths.insert(token.to_string(), Utc::now());
+    }
+
+    pub fn check_if_attempted_auth(&self, token: &str, duration_window: Option<Duration>) -> bool {
+        let now = Utc::now();
+        let attempted_auth = self.attempted_auths.get(token);
+        match attempted_auth {
+            Some(attempted_auth) => {
+                let duration_since_attempted_auth = now.signed_duration_since(*attempted_auth);
+                if let Some(duration) = duration_window {
+                    if duration_since_attempted_auth > duration {
+                        return false;
+                    }
+                }
+                true
+            }
+            None => false,
+        }
     }
 
     pub fn check_token_known_to_be_invalid(

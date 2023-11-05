@@ -83,6 +83,28 @@ pub async fn authenticate_token(
 
     // first we check that no other thread is currently trying to authenticate
     // if so we can wait instead of spamming auth server with simultanious requests
+    let start = std::time::Instant::now();
+    while connection_state.check_if_attempted_auth(token, Some(Duration::seconds(2))) {
+        warn!("Already attempted auth for token {} will wait", token);
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        //check if the token is invalid
+        if connection_state.check_token_known_to_be_invalid(token, Some(Duration::minutes(2))) {
+            warn!("Token known to be invalid {}", token);
+            return Err(ErrorCode::InvalidToken);
+        }
+        //check if token is in state
+        if let Some(username) =
+            connection_state.check_user_in_state(token, Some(Duration::minutes(5)))
+        {
+            return Ok(username);
+        }
+        //check if we have waited for more than 15 seconds
+        if start.elapsed().as_secs() > 15 {
+            return Err(ErrorCode::AuthServiceUnavailable);
+        }
+    }
+
+    connection_state.add_attempted_auth(token);
 
     let mut attempts: u8 = 0;
     let max_attempts = 4;
