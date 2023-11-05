@@ -11,9 +11,9 @@ use crate::{
     user::UserResponse,
 };
 
+use std::time::Instant;
 #[allow(unused_imports)]
 use tracing::{error, info, warn};
-use std::time::Instant;
 
 pub async fn check_token_and_authenticate(
     headers: &HeaderMap,
@@ -89,8 +89,6 @@ pub async fn authenticate_token(
         warn!("Already attempted auth for token {} will wait", token);
         tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         //check if the token is invalid
-
-        let check_start = Instant::now();
         if connection_state.check_token_known_to_be_invalid(token, Some(Duration::minutes(2))) {
             warn!("Token known to be invalid {}", token);
             return Err(ErrorCode::InvalidToken);
@@ -101,9 +99,6 @@ pub async fn authenticate_token(
         {
             return Ok(username);
         }
-
-        info!("check token known to be invalid took {:?}", check_start.elapsed());
-
         //check if we have waited for more than 15 seconds
         if start.elapsed().as_secs() > 15 {
             return Err(ErrorCode::AuthServiceUnavailable);
@@ -116,12 +111,18 @@ pub async fn authenticate_token(
     let max_attempts = 4;
     loop {
         attempts += 1;
+        let start = Instant::now();
         let res = client
             .get(auth_address.clone())
             .header("Authorization", format!("Token {}", token))
             .header(reqwest::header::USER_AGENT, "merx")
             .send()
             .await;
+        info!(
+            "Auth request for token {} took: {:?}",
+            token,
+            start.elapsed()
+        );
 
         match res {
             Ok(res) => match res.status() {
@@ -152,7 +153,7 @@ pub async fn authenticate_token(
                     return Err(ErrorCode::InvalidToken);
                 }
                 _ => {
-                    warn!("auth failed for with status {}", res.status());
+                    warn!("Auth failed for with status {}", res.status());
                     if attempts < max_attempts {
                         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
                         continue;
@@ -161,7 +162,7 @@ pub async fn authenticate_token(
                 }
             },
             Err(e) => {
-                println!("error: {:?}", e);
+                println!("Authentication error: {:?}", e);
                 if attempts < max_attempts {
                     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
                     continue;
