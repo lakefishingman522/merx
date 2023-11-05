@@ -13,6 +13,7 @@ use crate::{
 
 #[allow(unused_imports)]
 use tracing::{error, info, warn};
+use std::time::Instant;
 
 pub async fn check_token_and_authenticate(
     headers: &HeaderMap,
@@ -88,6 +89,8 @@ pub async fn authenticate_token(
         warn!("Already attempted auth for token {} will wait", token);
         tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         //check if the token is invalid
+
+        let check_start = Instant::now();
         if connection_state.check_token_known_to_be_invalid(token, Some(Duration::minutes(2))) {
             warn!("Token known to be invalid {}", token);
             return Err(ErrorCode::InvalidToken);
@@ -98,6 +101,9 @@ pub async fn authenticate_token(
         {
             return Ok(username);
         }
+
+        info!("check token known to be invalid took {:?}", check_start.elapsed());
+
         //check if we have waited for more than 15 seconds
         if start.elapsed().as_secs() > 15 {
             return Err(ErrorCode::AuthServiceUnavailable);
