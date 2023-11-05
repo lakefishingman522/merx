@@ -260,6 +260,20 @@ impl ConnectionStateStruct {
         let symbols_lock = self.symbols.read().unwrap();
         symbols_lock.get_currency_pairs_json()
     }
+
+    pub fn check_token_known_to_be_invalid(
+        &self,
+        token: &str,
+        duration_window: Option<chrono::Duration>,
+    ) -> bool {
+        let users = self.users.read().unwrap();
+        users.check_token_known_to_be_invalid(token, duration_window)
+    }
+
+    pub fn invalidate_token(&self, token: &str) {
+        let mut users = self.users.write().unwrap();
+        users.invalidate_token(token)
+    }
 }
 
 #[allow(unused_assignments)]

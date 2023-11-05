@@ -38,6 +38,12 @@ pub async fn check_token_and_authenticate(
     } else {
         token
     };
+    // we check if the token is known to be invalid within the last 2 minutes
+    if connection_state.check_token_known_to_be_invalid(token, Some(Duration::minutes(2))) {
+        warn!("Token known to be invalid {}", token);
+        return Err("Invalid token".to_string());
+    }
+    // we check if the token is already validated within the last 5 minutes
     if let Some(username) = connection_state.check_user_in_state(token, Some(Duration::minutes(5)))
     {
         return Ok(username);
@@ -48,6 +54,7 @@ pub async fn check_token_and_authenticate(
         Err(error_code) => {
             match error_code {
                 ErrorCode::InvalidToken => {
+                    connection_state.invalidate_token(token);
                     warn!("Invalid token");
                     return Err("Invalid token".to_string());
                 }
@@ -73,6 +80,9 @@ pub async fn authenticate_token(
 ) -> Result<String, ErrorCode> {
     let client = Client::new();
     let auth_address = format!("https://{}/api/user/", auth_uri);
+
+    // first we check that no other thread is currently trying to authenticate
+    // if so we can wait instead of spamming auth server with simultanious requests
 
     let mut attempts: u8 = 0;
     let max_attempts = 4;
@@ -216,17 +226,6 @@ pub async fn get_symbols(
                             return Err("Unable to add symbols to connection state".to_string());
                         }
                     }
-
-                    // match connection_state.add_or_update_symbols(&currency_pairs_response){
-                    //     Ok(_) => {
-                    //         info!("Added symbols to connection state");
-                    //         return Ok(());
-                    //     }
-                    //     Err(e) => {
-                    //         error!("Unable to add symbols to connection state: {:?}", e);
-                    //         return Err("Unable to add symbols to connection state".to_string());
-                    //     }
-                    // }
                 }
                 Err(e) => {
                     println!("error: {:?}", e);

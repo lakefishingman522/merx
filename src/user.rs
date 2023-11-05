@@ -53,6 +53,7 @@ pub struct User {
 #[derive(Default)]
 pub struct Users {
     users: HashMap<String, User>,
+    invalid_tokens: HashMap<String, DateTime<Utc>>,
 }
 
 impl Users {
@@ -103,6 +104,7 @@ impl Users {
 
         let username = user.username.clone();
         self.users.insert(user.username.clone(), user);
+        self.invalid_tokens.remove(token);
         Ok(username)
     }
 
@@ -111,6 +113,7 @@ impl Users {
         token: &str,
         validated_since_duration: Option<Duration>,
     ) -> Option<String> {
+        //TODO: This is not the most efficient way to tod this
         let user = self.users.values().find(|user| user.token == token);
         match user {
             Some(user) => {
@@ -128,6 +131,31 @@ impl Users {
                 Some(user.username.clone())
             }
             None => None,
+        }
+    }
+
+    pub fn invalidate_token(&mut self, token: &str) {
+        self.invalid_tokens.insert(token.to_string(), Utc::now());
+    }
+
+    pub fn check_token_known_to_be_invalid(
+        &self,
+        token: &str,
+        duration_window: Option<Duration>,
+    ) -> bool {
+        let now = Utc::now();
+        let invalid_token = self.invalid_tokens.get(token);
+        match invalid_token {
+            Some(invalid_token) => {
+                let duration_since_invalidated = now.signed_duration_since(*invalid_token);
+                if let Some(duration) = duration_window {
+                    if duration_since_invalidated > duration {
+                        return false;
+                    }
+                }
+                true
+            }
+            None => false,
         }
     }
 
