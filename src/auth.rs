@@ -13,7 +13,7 @@ use crate::{
 
 use std::time::Instant;
 #[allow(unused_imports)]
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 pub async fn check_token_and_authenticate(
     headers: &HeaderMap,
@@ -79,14 +79,10 @@ pub async fn authenticate_token(
     token: &str,
     connection_state: ConnectionState,
 ) -> Result<String, ErrorCode> {
-    let client = Client::new();
-    let auth_address = format!("https://{}/api/user/", auth_uri);
-
     // first we check that no other thread is currently trying to authenticate
     // if so we can wait instead of spamming auth server with simultanious requests
     let start = std::time::Instant::now();
     while connection_state.check_if_attempted_auth(token, Some(Duration::seconds(5))) {
-        warn!("Already attempted auth for token {} will wait", token);
         tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         //check if the token is invalid
         if connection_state.check_token_known_to_be_invalid(token, Some(Duration::minutes(2))) {
@@ -106,23 +102,20 @@ pub async fn authenticate_token(
     }
 
     connection_state.add_attempted_auth(token);
+    let client = Client::new();
+    let auth_address = format!("https://{}/api/user/", auth_uri);
 
     let mut attempts: u8 = 0;
     let max_attempts = 4;
     loop {
         attempts += 1;
-        let start = Instant::now();
         let res = client
             .get(auth_address.clone())
             .header("Authorization", format!("Token {}", token))
             .header(reqwest::header::USER_AGENT, "merx")
             .send()
             .await;
-        info!(
-            "Auth request for token {} took: {:?}",
-            token,
-            start.elapsed()
-        );
+
 
         match res {
             Ok(res) => match res.status() {
