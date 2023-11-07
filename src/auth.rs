@@ -11,8 +11,9 @@ use crate::{
     user::UserResponse,
 };
 
+use std::time::Instant;
 #[allow(unused_imports)]
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 pub async fn check_token_and_authenticate(
     headers: &HeaderMap,
@@ -38,6 +39,12 @@ pub async fn check_token_and_authenticate(
     } else {
         token
     };
+    // we check if the token is known to be invalid within the last 2 minutes
+    if connection_state.check_token_known_to_be_invalid(token, Some(Duration::minutes(2))) {
+        warn!("Token known to be invalid {}", token);
+        return Err("Invalid token".to_string());
+    }
+    // we check if the token is already validated within the last 5 minutes
     if let Some(username) = connection_state.check_user_in_state(token, Some(Duration::minutes(5)))
     {
         return Ok(username);
@@ -48,6 +55,7 @@ pub async fn check_token_and_authenticate(
         Err(error_code) => {
             match error_code {
                 ErrorCode::InvalidToken => {
+                    connection_state.invalidate_token(token);
                     warn!("Invalid token");
                     return Err("Invalid token".to_string());
                 }
@@ -71,6 +79,29 @@ pub async fn authenticate_token(
     token: &str,
     connection_state: ConnectionState,
 ) -> Result<String, ErrorCode> {
+    // first we check that no other thread is currently trying to authenticate
+    // if so we can wait instead of spamming auth server with simultanious requests
+    let start = std::time::Instant::now();
+    while connection_state.check_if_attempted_auth(token, Some(Duration::seconds(5))) {
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        //check if the token is invalid
+        if connection_state.check_token_known_to_be_invalid(token, Some(Duration::minutes(2))) {
+            warn!("Token known to be invalid {}", token);
+            return Err(ErrorCode::InvalidToken);
+        }
+        //check if token is in state
+        if let Some(username) =
+            connection_state.check_user_in_state(token, Some(Duration::minutes(5)))
+        {
+            return Ok(username);
+        }
+        //check if we have waited for more than 15 seconds
+        if start.elapsed().as_secs() > 15 {
+            return Err(ErrorCode::AuthServiceUnavailable);
+        }
+    }
+
+    connection_state.add_attempted_auth(token);
     let client = Client::new();
     let auth_address = format!("https://{}/api/user/", auth_uri);
 
@@ -84,6 +115,7 @@ pub async fn authenticate_token(
             .header(reqwest::header::USER_AGENT, "merx")
             .send()
             .await;
+
 
         match res {
             Ok(res) => match res.status() {
@@ -114,7 +146,7 @@ pub async fn authenticate_token(
                     return Err(ErrorCode::InvalidToken);
                 }
                 _ => {
-                    warn!("auth failed for with status {}", res.status());
+                    warn!("Auth failed for with status {}", res.status());
                     if attempts < max_attempts {
                         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
                         continue;
@@ -123,7 +155,7 @@ pub async fn authenticate_token(
                 }
             },
             Err(e) => {
-                println!("error: {:?}", e);
+                println!("Authentication error: {:?}", e);
                 if attempts < max_attempts {
                     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
                     continue;
@@ -216,17 +248,6 @@ pub async fn get_symbols(
                             return Err("Unable to add symbols to connection state".to_string());
                         }
                     }
-
-                    // match connection_state.add_or_update_symbols(&currency_pairs_response){
-                    //     Ok(_) => {
-                    //         info!("Added symbols to connection state");
-                    //         return Ok(());
-                    //     }
-                    //     Err(e) => {
-                    //         error!("Unable to add symbols to connection state: {:?}", e);
-                    //         return Err("Unable to add symbols to connection state".to_string());
-                    //     }
-                    // }
                 }
                 Err(e) => {
                     println!("error: {:?}", e);

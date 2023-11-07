@@ -91,6 +91,7 @@ async fn main() {
     log_merx_title();
     info!("Running Merx");
     info!("CBAG Uri  : {}", uris.cbag_uri);
+    info!("Depth Uri : {}", uris.cbag_depth_uri);
     info!("Auth Server Uri  : {}", uris.auth_uri);
     info!("Proxy port: {}", port);
 
