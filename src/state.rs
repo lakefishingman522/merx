@@ -12,7 +12,7 @@ use tokio::sync::mpsc::Sender;
 use axum::extract::ws::CloseFrame;
 use axum::extract::ws::Message as axum_Message;
 use tokio::time::{sleep, timeout, Duration};
-use tokio_tungstenite::connect_async;
+use tokio_tungstenite::{connect_async, tungstenite};
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{error, info, warn};
 
@@ -290,6 +290,18 @@ impl ConnectionStateStruct {
     }
 }
 
+fn parse_tung_response_body_to_str(body: &Option<Vec<u8>>) -> Result<String, String> {
+    //parse body into a string
+    match body {
+        Some(body) => match std::str::from_utf8(body) {
+            Ok(body) => Ok(body.to_string()),
+            Err(_) => Err("Unable to parse body".to_string())
+        },
+        None => Err("Empty body".to_string())
+    }
+}
+
+
 #[allow(unused_assignments)]
 pub fn subscribe_to_market_data(
     ws_endpoint: &str,
@@ -303,13 +315,14 @@ pub fn subscribe_to_market_data(
     let full_url = format!("ws://{}{}", cbag_uri, ws_endpoint);
 
     tokio::spawn(async move {
-        info!("Attempting to connect to {}", &ws_endpoint);
+        // info!("Attempting to connect to {}", &ws_endpoint);
         let url = url::Url::parse(&full_url).unwrap();
         let mut closing_down = false;
         let mut consecutive_errors = 0;
+        let mut bad_request = false;
         // TODO: after x number of timeouts, should check if clients are still connected
         loop {
-            if consecutive_errors >= 5 {
+            if bad_request || consecutive_errors >= 5  {
                 // disconnect from all sockets
                 warn!(
                     "Unable to connect, closing down subscription {}",
@@ -356,7 +369,7 @@ pub fn subscribe_to_market_data(
                         *count -= 1;
                         if *count == 0 {
                             locked_subscription_count.remove(client_address);
-                            error!(
+                            info!(
                                 "Removing the subscription count for {} as it is 0",
                                 client_address
                             );
@@ -385,7 +398,29 @@ pub fn subscribe_to_market_data(
             let (ws_stream, _) = match result {
                 Ok(whatever) => whatever,
                 Err(err) => {
-                    error!("Connection Error connecting to {}: {:?}", &ws_endpoint, err);
+                    // get the error response code
+                    match err {
+                        tungstenite::Error::Http(response) => {
+                            if response.status() == 400 {
+                                let body_str = match parse_tung_response_body_to_str(response.body()) {
+                                    Ok(body_str) => body_str,
+                                    Err(err) => {
+                                        error!("Error parsing body: {}", err);
+                                        "Unable to parse body".to_string()
+                                    }
+                                };
+                                //convert body to a string
+                                warn!("Connection Error Status 400: {:?}", body_str);
+                                bad_request = true;
+                                continue;
+                            }
+                        }
+                        _ => {
+                            // another error which was not a HTTP error
+                            error!("Connection Error connecting to {}: {:?}", &ws_endpoint, err);
+                        },
+                    }
+
                     consecutive_errors += 1;
                     sleep(Duration::from_millis(500)).await;
                     continue;
