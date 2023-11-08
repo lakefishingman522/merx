@@ -24,6 +24,7 @@ struct ExchangeResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserResponse {
     username: String,
+    is_staff: Option<bool>,
     organization: String,
     client_id: String,
     exchanges: Vec<ExchangeResponse>,
