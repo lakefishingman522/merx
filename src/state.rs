@@ -288,6 +288,11 @@ impl ConnectionStateStruct {
         let users = self.users.read().unwrap();
         users.check_if_attempted_auth(token, duration_window)
     }
+
+    pub fn get_client_id(&self, username: &str) -> Result<String, String> {
+        let users = self.users.read().unwrap();
+        users.get_client_id(username)
+    }
 }
 
 fn parse_tung_response_body_to_str(body: &Option<Vec<u8>>) -> Result<String, String> {

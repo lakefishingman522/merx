@@ -241,4 +241,12 @@ impl Users {
             None => Err(format!("User {} not found", username)),
         }
     }
+
+    pub fn get_client_id(&self, username: &str) -> Result<String, String> {
+        let user = self.users.get(username);
+        match user {
+            Some(user) => Ok(user.client_id.clone()),
+            None => Err(format!("User {} not found", username)),
+        }
+    }
 }
