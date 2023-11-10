@@ -39,13 +39,14 @@ pub struct CurrencyPairsResponse {
     funding_currency: Currency,
     pub exchanges: Vec<Exchange>,
     tick_size: String,
-    product_type: String,
+    product_type: Option<String>,
 }
 
 #[derive(Default)]
 pub struct Symbols {
     pub cbbo_sizes: HashMap<String, Vec<f64>>,
     currency_pairs_json_response: String,
+    internal_currency_pairs_json_response: String,
     time_validated: DateTime<Utc>,
 }
 
@@ -54,10 +55,15 @@ impl Symbols {
         &mut self,
         symbols: Symbols,
         currency_pairs_json: String,
+        is_internal: bool,
     ) -> Result<(), String> {
-        self.cbbo_sizes = symbols.cbbo_sizes.clone();
-        self.currency_pairs_json_response = currency_pairs_json;
-        self.time_validated = Utc::now();
+        if is_internal {
+            self.internal_currency_pairs_json_response = currency_pairs_json;
+        } else {
+            self.cbbo_sizes = symbols.cbbo_sizes.clone();
+            self.currency_pairs_json_response = currency_pairs_json;
+            self.time_validated = Utc::now();
+        }
         Ok(())
     }
 
@@ -84,11 +90,18 @@ impl Symbols {
         return Err("Invalid currency pair".to_string());
     }
 
-    pub fn get_currency_pairs_json(&self) -> Result<String, String> {
+    pub fn get_currency_pairs_json(&self, is_internal: bool) -> Result<String, String> {
         // if there are no symbols return an error
-        if !self.has_symbols() {
-            return Err("Awaiting symbol data".to_string());
+        if is_internal {
+            if self.internal_currency_pairs_json_response.is_empty() {
+                return Err("Awaiting symbol data".to_string());
+            }
+            return Ok(self.internal_currency_pairs_json_response.clone());
+        } else {
+            if !self.has_symbols() {
+                return Err("Awaiting symbol data".to_string());
+            }
+            return Ok(self.currency_pairs_json_response.clone());
         }
-        Ok(self.currency_pairs_json_response.clone())
     }
 }

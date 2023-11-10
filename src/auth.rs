@@ -116,7 +116,6 @@ pub async fn authenticate_token(
             .send()
             .await;
 
-
         match res {
             Ok(res) => match res.status() {
                 reqwest::StatusCode::OK => {
@@ -199,9 +198,15 @@ pub async fn get_symbols(
     auth_uri: &str,
     token: &str,
     connection_state: ConnectionState,
+    is_internal: bool,
 ) -> Result<(), String> {
     let client = Client::new();
-    let currency_pairs_address = format!("https://{}/api/currency_pairs/", auth_uri);
+
+    let currency_pairs_address = if !is_internal {
+        format!("https://{}/api/currency_pairs/", auth_uri)
+    } else {
+        format!("https://{}/api_internal/currency_pairs/", auth_uri)
+    };
 
     let res = client
         .get(currency_pairs_address)
@@ -238,10 +243,19 @@ pub async fn get_symbols(
                         return Err("Unable to parse currency pairs response".to_string());
                     };
 
-                    match connection_state.add_or_update_symbols(symbols_update, json_string) {
+                    match connection_state.add_or_update_symbols(
+                        symbols_update,
+                        json_string,
+                        is_internal,
+                    ) {
                         Ok(_) => {
-                            info!("Added symbols to connection state");
-                            return Ok(());
+                            if is_internal {
+                                info!("Added internal symbols to connection state");
+                                return Ok(());
+                            } else {
+                                info!("Added symbols to connection state");
+                                return Ok(());
+                            }
                         }
                         Err(e) => {
                             error!("Unable to add symbols to connection state: {:?}", e);

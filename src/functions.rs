@@ -913,11 +913,12 @@ pub async fn authenticate_user(
     //     .unwrap()
 }
 
-pub async fn currency_pairs(
-    State(connection_state): State<ConnectionState>,
-    Extension(uris): Extension<URIs>,
+pub async fn currency_pairs_helper(
+    connection_state: ConnectionState,
+    uris: URIs,
     headers: HeaderMap,
-    Query(params): Query<HashMap<String, String>>,
+    params: HashMap<String, String>,
+    is_internal: bool,
 ) -> impl IntoResponse {
     match check_token_and_authenticate(
         &headers,
@@ -928,7 +929,7 @@ pub async fn currency_pairs(
     .await
     {
         Ok(_) => {
-            match connection_state.get_currency_pairs_json() {
+            match connection_state.get_currency_pairs_json(is_internal) {
                 Ok(currency_pairs_json_string) => {
                     return Response::builder()
                         .status(StatusCode::OK)
@@ -954,4 +955,22 @@ pub async fn currency_pairs(
                 .unwrap()
         }
     }
+}
+
+pub async fn currency_pairs(
+    State(connection_state): State<ConnectionState>,
+    Extension(uris): Extension<URIs>,
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    currency_pairs_helper(connection_state, uris, headers, params, false).await
+}
+
+pub async fn currency_pairs_internal(
+    State(connection_state): State<ConnectionState>,
+    Extension(uris): Extension<URIs>,
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    currency_pairs_helper(connection_state, uris, headers, params, true).await
 }

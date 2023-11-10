@@ -21,8 +21,8 @@ use tracing_subscriber::EnvFilter;
 
 use merx::art::log_merx_title;
 use merx::functions::{
-    authenticate_user, axum_ws_handler, currency_pairs, fallback, forward_request, get_state, root,
-    URIs,
+    authenticate_user, axum_ws_handler, currency_pairs, currency_pairs_internal, fallback,
+    forward_request, get_state, root, URIs,
 };
 use merx::md_handlers::rest_cost_calculator_v1;
 use merx::state::ConnectionState;
@@ -115,6 +115,11 @@ async fn main() {
         .route("/authenticate_user", get(authenticate_user))
         .route("/api/currency_pairs", get(currency_pairs))
         .route("/api/currency_pairs/", get(currency_pairs))
+        .route("/api_internal/currency_pairs", get(currency_pairs_internal))
+        .route(
+            "/api_internal/currency_pairs/",
+            get(currency_pairs_internal),
+        )
         // .route("/book/:symbol", get(forward_request))
         // .route("/properties/:symbol", get(forward_request))
         // .route("/legacy-cbbo/:symbol", get(forward_request))
