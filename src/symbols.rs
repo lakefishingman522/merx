@@ -47,6 +47,7 @@ pub struct Symbols {
     pub cbbo_sizes: HashMap<String, Vec<f64>>,
     currency_pairs_json_response: String,
     time_validated: DateTime<Utc>,
+    cached_responses: HashMap<String, String>,
 }
 
 impl Symbols {
@@ -90,5 +91,17 @@ impl Symbols {
             return Err("Awaiting symbol data".to_string());
         }
         return Ok(self.currency_pairs_json_response.clone());
+    }
+
+    pub fn add_or_update_cached_response(&mut self, endpoint: &str, response: String) {
+        self.cached_responses.insert(endpoint.to_string(), response);
+    }
+
+    pub fn get_cached_response(&self, endpoint: &str) -> Result<String, String> {
+        if let Some(response) = self.cached_responses.get(endpoint) {
+            return Ok(response.clone());
+        }
+        //TODO have a better response here
+        return Err("not found".to_string());
     }
 }

@@ -288,6 +288,16 @@ impl ConnectionStateStruct {
         let users = self.users.read().unwrap();
         users.check_if_attempted_auth(token, duration_window)
     }
+
+    pub fn add_or_update_cached_response(&self, endpoint: &str, response: String) {
+        let mut symbols_lock = self.symbols.write().unwrap();
+        symbols_lock.add_or_update_cached_response(endpoint, response)
+    }
+
+    pub fn get_cached_response(&self, endpoint: &str) -> Result<String, String> {
+        let symbols_lock = self.symbols.read().unwrap();
+        symbols_lock.get_cached_response(endpoint)
+    }
 }
 
 fn parse_tung_response_body_to_str(body: &Option<Vec<u8>>) -> Result<String, String> {
