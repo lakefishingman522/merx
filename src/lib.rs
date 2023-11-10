@@ -1,5 +1,6 @@
 pub mod art;
 pub mod auth;
+pub mod cached_routes;
 pub mod error;
 pub mod functions;
 pub mod md_handlers;

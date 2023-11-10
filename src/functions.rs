@@ -929,7 +929,7 @@ pub async fn currency_pairs_helper(
     .await
     {
         Ok(_) => {
-            match connection_state.get_currency_pairs_json(is_internal) {
+            match connection_state.get_currency_pairs_json() {
                 Ok(currency_pairs_json_string) => {
                     return Response::builder()
                         .status(StatusCode::OK)

@@ -234,10 +234,9 @@ impl ConnectionStateStruct {
         &self,
         symbols_update: Symbols,
         response_json_string: String,
-        is_internal: bool,
     ) -> Result<(), String> {
         let mut symbols_lock = self.symbols.write().unwrap();
-        symbols_lock.add_or_update_symbols(symbols_update, response_json_string, is_internal)
+        symbols_lock.add_or_update_symbols(symbols_update, response_json_string)
     }
 
     // general function to check state has what it needs to start
@@ -257,9 +256,9 @@ impl ConnectionStateStruct {
         symbols_lock.is_size_filter_valid(pair, size_filter)
     }
 
-    pub fn get_currency_pairs_json(&self, is_internal: bool) -> Result<String, String> {
+    pub fn get_currency_pairs_json(&self) -> Result<String, String> {
         let symbols_lock = self.symbols.read().unwrap();
-        symbols_lock.get_currency_pairs_json(is_internal)
+        symbols_lock.get_currency_pairs_json()
     }
 
     pub fn check_token_known_to_be_invalid(
