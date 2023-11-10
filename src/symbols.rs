@@ -46,8 +46,8 @@ pub struct CurrencyPairsResponse {
 pub struct Symbols {
     pub cbbo_sizes: HashMap<String, Vec<f64>>,
     currency_pairs_json_response: String,
-    internal_currency_pairs_json_response: String,
     time_validated: DateTime<Utc>,
+    cached_responses: HashMap<String, String>,
 }
 
 impl Symbols {
@@ -55,15 +55,10 @@ impl Symbols {
         &mut self,
         symbols: Symbols,
         currency_pairs_json: String,
-        is_internal: bool,
     ) -> Result<(), String> {
-        if is_internal {
-            self.internal_currency_pairs_json_response = currency_pairs_json;
-        } else {
-            self.cbbo_sizes = symbols.cbbo_sizes.clone();
-            self.currency_pairs_json_response = currency_pairs_json;
-            self.time_validated = Utc::now();
-        }
+        self.cbbo_sizes = symbols.cbbo_sizes.clone();
+        self.currency_pairs_json_response = currency_pairs_json;
+        self.time_validated = Utc::now();
         Ok(())
     }
 
@@ -90,18 +85,23 @@ impl Symbols {
         return Err("Invalid currency pair".to_string());
     }
 
-    pub fn get_currency_pairs_json(&self, is_internal: bool) -> Result<String, String> {
+    pub fn get_currency_pairs_json(&self) -> Result<String, String> {
         // if there are no symbols return an error
-        if is_internal {
-            if self.internal_currency_pairs_json_response.is_empty() {
-                return Err("Awaiting symbol data".to_string());
-            }
-            return Ok(self.internal_currency_pairs_json_response.clone());
-        } else {
-            if !self.has_symbols() {
-                return Err("Awaiting symbol data".to_string());
-            }
-            return Ok(self.currency_pairs_json_response.clone());
+        if !self.has_symbols() {
+            return Err("Awaiting symbol data".to_string());
         }
+        return Ok(self.currency_pairs_json_response.clone());
+    }
+
+    pub fn add_or_update_cached_response(&mut self, endpoint: &str, response: String) {
+        self.cached_responses.insert(endpoint.to_string(), response);
+    }
+
+    pub fn get_cached_response(&self, endpoint: &str) -> Result<String, String> {
+        if let Some(response) = self.cached_responses.get(endpoint) {
+            return Ok(response.clone());
+        }
+        //TODO have a better response here
+        return Err("not found".to_string());
     }
 }

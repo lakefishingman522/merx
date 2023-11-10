@@ -194,19 +194,50 @@ fn parse_currency_pairs_response(
     Ok(symbols)
 }
 
+pub async fn get_data_from_auth_server(
+    auth_uri: &str,
+    token: &str,
+    endpoint: &str,
+) -> Result<String, String> {
+    let client = Client::new();
+    let auth_address = format!("https://{}{}", auth_uri, endpoint);
+
+    let res = client
+        .get(auth_address.clone())
+        .header("Authorization", format!("Token {}", token))
+        .header(reqwest::header::USER_AGENT, "merx")
+        .send()
+        .await;
+
+    match res {
+        Ok(res) => {
+            // check the response code
+            if res.status() != reqwest::StatusCode::OK {
+                return Err(format!("Unable to get {}: {}", endpoint, res.status()));
+            }
+
+            let json_string = match res.text().await {
+                Ok(json_string) => json_string,
+                Err(e) => {
+                    error!("Unable to get {}: {:?}", endpoint, e);
+                    return Err(format!("Unable to get {}", endpoint));
+                }
+            };
+            return Ok(json_string);
+        }
+        Err(e) => Err(format!("Unable to get {}: {:?}", endpoint, e)),
+    }
+}
+
 pub async fn get_symbols(
     auth_uri: &str,
     token: &str,
     connection_state: ConnectionState,
-    is_internal: bool,
 ) -> Result<(), String> {
     let client = Client::new();
 
-    let currency_pairs_address = if !is_internal {
-        format!("https://{}/api/currency_pairs/", auth_uri)
-    } else {
-        format!("https://{}/api_internal/currency_pairs/", auth_uri)
-    };
+    //TODO: can be refactored to use the get_data_from_auth_server function
+    let currency_pairs_address = format!("https://{}/api/currency_pairs/", auth_uri);
 
     let res = client
         .get(currency_pairs_address)
@@ -243,19 +274,10 @@ pub async fn get_symbols(
                         return Err("Unable to parse currency pairs response".to_string());
                     };
 
-                    match connection_state.add_or_update_symbols(
-                        symbols_update,
-                        json_string,
-                        is_internal,
-                    ) {
+                    match connection_state.add_or_update_symbols(symbols_update, json_string) {
                         Ok(_) => {
-                            if is_internal {
-                                info!("Added internal symbols to connection state");
-                                return Ok(());
-                            } else {
-                                info!("Added symbols to connection state");
-                                return Ok(());
-                            }
+                            info!("Added symbols to connection state");
+                            return Ok(());
                         }
                         Err(e) => {
                             error!("Unable to add symbols to connection state: {:?}", e);
