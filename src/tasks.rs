@@ -12,8 +12,20 @@ pub async fn start_pull_symbols_task(
     tokio::spawn(async move {
         info!("Starting the pull symbols task");
         loop {
-            let connection_state_clone = connection_state.clone();
-            let symbols = match get_symbols(&auth_uri, &token, connection_state_clone).await {
+            // for api/currency_pairs
+            let symbols =
+                match get_symbols(&auth_uri, &token, connection_state.clone(), false).await {
+                    Ok(symbols) => symbols,
+                    Err(e) => {
+                        error!("Unable to get symbols: {}", e);
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        continue;
+                    }
+                };
+            tokio::time::sleep(Duration::from_secs(55)).await;
+            // for api_internal/currnecy_pairs
+            let symbols = match get_symbols(&auth_uri, &token, connection_state.clone(), true).await
+            {
                 Ok(symbols) => symbols,
                 Err(e) => {
                     error!("Unable to get symbols: {}", e);
@@ -21,7 +33,7 @@ pub async fn start_pull_symbols_task(
                     continue;
                 }
             };
-            tokio::time::sleep(Duration::from_secs(60)).await;
+            tokio::time::sleep(Duration::from_secs(55)).await;
         }
     })
 }
