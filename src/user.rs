@@ -1,8 +1,8 @@
 use chrono::prelude::*;
 use chrono::Duration;
 //TODO: remove chrono and use tokio::time::Instant
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::md_handlers::helper::exchange_to_cbag_market;
 
