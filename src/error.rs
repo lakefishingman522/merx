@@ -49,7 +49,7 @@ pub enum ErrorCode {
     InvalidToken = 101002,
     AuthServiceUnavailable = 101003,
     AuthInternalError = 101004,
-    AwaitingSymbolData = 101005,
+    ServerInitializing = 101005,
     AlreadySubscribed = 101006,
     InvalidRequest = 101007,
 }
@@ -74,7 +74,7 @@ impl fmt::Display for ErrorCode {
             ErrorCode::InvalidToken => write!(f, "INVALID_TOKEN"),
             ErrorCode::AuthServiceUnavailable => write!(f, "AUTH_SERVICE_UNAVAILABLE"),
             ErrorCode::AuthInternalError => write!(f, "AUTH_INTERNAL_ERROR"),
-            ErrorCode::AwaitingSymbolData => write!(f, "AWAITING_SYMBOL_DATA"),
+            ErrorCode::ServerInitializing => write!(f, "AWAITING_SYMBOL_DATA"),
             ErrorCode::AlreadySubscribed => write!(f, "ALREADY_SUBSCRIBED"),
             ErrorCode::InvalidRequest => write!(f, "INVALID_REQUEST"),
         }
@@ -95,7 +95,7 @@ impl ErrorCode {
             ErrorCode::AuthInternalError => {
                 "Authentication service internal error. Please try again later"
             }
-            ErrorCode::AwaitingSymbolData => {
+            ErrorCode::ServerInitializing => {
                 "Server is initializing and awaiting metadata. Please try again later"
             }
             ErrorCode::AlreadySubscribed => "Already subscribed to this subscription",

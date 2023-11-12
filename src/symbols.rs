@@ -75,7 +75,7 @@ impl Symbols {
             }
             return Err(MerxErrorResponse::new(ErrorCode::InvalidCurrencyPair));
         }
-        Err(MerxErrorResponse::new(ErrorCode::AwaitingSymbolData))
+        Err(MerxErrorResponse::new(ErrorCode::ServerInitializing))
     }
 
     pub fn is_size_filter_valid(
@@ -100,7 +100,7 @@ impl Symbols {
             }
             return Err(MerxErrorResponse::new(ErrorCode::InvalidCurrencyPair));
         }
-        Err(MerxErrorResponse::new(ErrorCode::AwaitingSymbolData))
+        Err(MerxErrorResponse::new(ErrorCode::ServerInitializing))
     }
 
     pub fn get_currency_pairs_json(&self) -> Result<String, String> {
