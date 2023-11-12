@@ -44,6 +44,9 @@ pub enum ErrorCode {
     InvalidCurrencyPair = 100001,
     InvalidSubscriptionMessage = 100002,
     InvalidSizeFilter = 100003,
+    InvalidDepthLimit = 100004,
+    InvalidExchanges = 100005,
+    InvalidRequest = 100006,
     // system errors
     ResponseError = 101001,
     InvalidToken = 101002,
@@ -51,7 +54,7 @@ pub enum ErrorCode {
     AuthInternalError = 101004,
     ServerInitializing = 101005,
     AlreadySubscribed = 101006,
-    InvalidRequest = 101007,
+    ServerError = 10100,
 }
 
 // write a custom serializer for ErrorCode that uses the number as the value
@@ -70,6 +73,8 @@ impl fmt::Display for ErrorCode {
             ErrorCode::InvalidCurrencyPair => write!(f, "INVALID_CURRENCY_PAIR"),
             ErrorCode::InvalidSubscriptionMessage => write!(f, "INVALID_SUBSCRIPTION_MESSAGE"),
             ErrorCode::InvalidSizeFilter => write!(f, "INVALID_SIZE_FILTER"),
+            ErrorCode::InvalidDepthLimit => write!(f, "INVALID_DEPTH_LIMIT"),
+            ErrorCode::InvalidExchanges => write!(f, "INVALID_EXCHANGES"),
             ErrorCode::ResponseError => write!(f, "RESPONSE_ERROR"),
             ErrorCode::InvalidToken => write!(f, "INVALID_TOKEN"),
             ErrorCode::AuthServiceUnavailable => write!(f, "AUTH_SERVICE_UNAVAILABLE"),
@@ -77,6 +82,7 @@ impl fmt::Display for ErrorCode {
             ErrorCode::ServerInitializing => write!(f, "AWAITING_SYMBOL_DATA"),
             ErrorCode::AlreadySubscribed => write!(f, "ALREADY_SUBSCRIBED"),
             ErrorCode::InvalidRequest => write!(f, "INVALID_REQUEST"),
+            ErrorCode::ServerError => write!(f, "SERVER_ERROR"),
         }
     }
 }
@@ -87,6 +93,8 @@ impl ErrorCode {
             ErrorCode::InvalidCurrencyPair => "Please check currency pair",
             ErrorCode::InvalidSubscriptionMessage => "Unable to parse subscription message",
             ErrorCode::InvalidSizeFilter => "Please check size filter is valid",
+            ErrorCode::InvalidDepthLimit => "Please check depth limit is valid",
+            ErrorCode::InvalidExchanges => "Please check exchanges are valid",
             ErrorCode::ResponseError => "Unable to generate error response",
             ErrorCode::InvalidToken => "Invalid Token. Please try again with a valid token",
             ErrorCode::AuthServiceUnavailable => {
@@ -100,6 +108,7 @@ impl ErrorCode {
             }
             ErrorCode::AlreadySubscribed => "Already subscribed to this subscription",
             ErrorCode::InvalidRequest => "Unable to get data. Please check request parameters",
+            ErrorCode::ServerError => "Unexpected Server Error",
         }
     }
 }

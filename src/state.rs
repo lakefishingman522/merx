@@ -217,7 +217,7 @@ impl ConnectionStateStruct {
         &self,
         username: &str,
         exchanges: &Vec<String>,
-    ) -> Result<String, String> {
+    ) -> Result<String, MerxErrorResponse> {
         let users = self.users.read().unwrap();
         users.validate_exchanges_vector(username, exchanges)
     }

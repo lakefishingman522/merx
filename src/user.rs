@@ -3,7 +3,10 @@ use chrono::Duration;
 //TODO: remove chrono and use tokio::time::Instant
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tracing::error;
 
+use crate::error::ErrorCode;
+use crate::error::MerxErrorResponse;
 use crate::md_handlers::helper::exchange_to_cbag_market;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -212,7 +215,7 @@ impl Users {
         &self,
         username: &str,
         exchanges_vec: &Vec<String>,
-    ) -> Result<String, String> {
+    ) -> Result<String, MerxErrorResponse> {
         let user = self.users.get(username);
         match user {
             Some(user) => {
@@ -221,15 +224,24 @@ impl Users {
                     if let Some(exchange) = user.exchanges.get(exchange) {
                         cbag_markets.push(exchange.cbag_market.clone());
                     } else {
-                        return Err(format!(
-                            "User {} does not have access to exchange {}",
-                            username, exchange
+                        return Err(MerxErrorResponse::new_and_override_error_text(
+                            ErrorCode::InvalidExchanges,
+                            &format!(
+                                "Exchange `{}` invalid or user does not have access",
+                                exchange
+                            ),
                         ));
                     }
                 }
                 Ok(cbag_markets.join(","))
             }
-            None => Err(format!("User {} not found", username)),
+            None => {
+                error!(
+                    "User {} not found whilst attempting to validate exchanges",
+                    username
+                );
+                Err(MerxErrorResponse::new(ErrorCode::ServerError))
+            }
         }
     }
 

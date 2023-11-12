@@ -49,8 +49,7 @@ pub fn handle_subscription(
             //TODO: remove the unwrap from here
             sender
                 .try_send(axum::extract::ws::Message::Text(
-                    serde_json::json!({"error": "unable to parse subscription message"})
-                        .to_string(),
+                    MerxErrorResponse::new(ErrorCode::InvalidSubscriptionMessage).to_json_str(),
                 ))
                 .unwrap();
             tracing::error!("Error parsing subscription message: {}", e);
@@ -73,10 +72,14 @@ pub fn handle_subscription(
 
     //check that the depth limit is between 1-200
     if let Some(depth_limit) = parsed_sub_msg.depth_limit {
-        if depth_limit < 1 || depth_limit > 200 {
+        if !(1..=200).contains(&depth_limit) {
             sender
                 .try_send(axum::extract::ws::Message::Text(
-                    serde_json::json!({"error": "depth_limit must be between 1-200"}).to_string(),
+                    MerxErrorResponse::new_and_override_error_text(
+                        ErrorCode::InvalidDepthLimit,
+                        "Depth limit must be between 1 and 200",
+                    )
+                    .to_json_str(),
                 ))
                 .unwrap();
             return;
@@ -86,8 +89,11 @@ pub fn handle_subscription(
     if parsed_sub_msg.exchanges.is_empty() {
         sender
             .try_send(axum::extract::ws::Message::Text(
-                serde_json::json!({"error": "exchanges must contain at least 1 exchange"})
-                    .to_string(),
+                MerxErrorResponse::new_and_override_error_text(
+                    ErrorCode::InvalidExchanges,
+                    "No Exchanges Found. At least one exchange must be provided",
+                )
+                .to_json_str(),
             ))
             .unwrap();
         return;
@@ -96,10 +102,10 @@ pub fn handle_subscription(
     let cbag_markets =
         match connection_state.validate_exchanges_vector(username, &parsed_sub_msg.exchanges) {
             Ok(cbag_markets) => cbag_markets,
-            Err(e) => {
+            Err(merx_error_response) => {
                 sender
                     .try_send(axum::extract::ws::Message::Text(
-                        serde_json::json!({ "error": e }).to_string(),
+                        merx_error_response.to_json_str(),
                     ))
                     .unwrap();
                 return;
