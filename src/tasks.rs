@@ -17,7 +17,7 @@ pub async fn start_pull_symbols_task(
         info!("Starting the pull symbols task");
         loop {
             // for api/currency_pairs
-            let symbols = match get_symbols(&auth_uri, &token, connection_state.clone()).await {
+            match get_symbols(&auth_uri, &token, connection_state.clone()).await {
                 Ok(symbols) => symbols,
                 Err(e) => {
                     error!("Unable to get symbols: {}", e);

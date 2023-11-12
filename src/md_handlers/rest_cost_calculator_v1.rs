@@ -5,13 +5,14 @@ use axum::{
     response::IntoResponse,
     Extension,
 };
-use reqwest::{Client, StatusCode};
+use reqwest::StatusCode;
 use serde::Deserialize;
 
 use crate::functions::URIs;
-use tracing::{error, info, warn};
+use tracing::info;
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct RestCostCalculatorV1RequestBody {
     currency_pair: String,
     exchanges: Vec<String>,
@@ -23,8 +24,8 @@ pub struct RestCostCalculatorV1RequestBody {
 
 pub async fn handle_request(
     OriginalUri(original_uri): OriginalUri,
-    Extension(uris): axum::Extension<URIs>,
-    Json(body): Json<RestCostCalculatorV1RequestBody>,
+    Extension(_uris): axum::Extension<URIs>,
+    Json(_body): Json<RestCostCalculatorV1RequestBody>,
 ) -> impl IntoResponse {
     info!(
         "Received Authenticated REST Forward Request {}",
@@ -33,7 +34,7 @@ pub async fn handle_request(
     // let target_url = format!("http://{}{}", cbag_uri, original_uri);
 
     // Make a GET request to the target server
-    let client = Client::new();
+    // let client = Client::new();
     // let target_res = client.get(&target_url).send().await;
 
     // match target_res {

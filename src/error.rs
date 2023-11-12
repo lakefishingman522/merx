@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
-use std::{f32::consts::E, fmt};
+use serde::Serialize;
+use std::fmt;
 
 #[derive(Debug, Serialize)]
 pub struct MerxErrorResponse {
@@ -50,6 +50,7 @@ pub enum ErrorCode {
     AuthServiceUnavailable = 101003,
     AuthInternalError = 101004,
     AwaitingSymbolData = 101005,
+    AlreadySubscribed = 101006,
 }
 
 // write a custom serializer for ErrorCode that uses the number as the value
@@ -73,6 +74,7 @@ impl fmt::Display for ErrorCode {
             ErrorCode::AuthServiceUnavailable => write!(f, "AUTH_SERVICE_UNAVAILABLE"),
             ErrorCode::AuthInternalError => write!(f, "AUTH_INTERNAL_ERROR"),
             ErrorCode::AwaitingSymbolData => write!(f, "AWAITING_SYMBOL_DATA"),
+            ErrorCode::AlreadySubscribed => write!(f, "ALREADY_SUBSCRIBED"),
         }
     }
 }
@@ -94,6 +96,7 @@ impl ErrorCode {
             ErrorCode::AwaitingSymbolData => {
                 "Server is initializing and awaiting metadata. Please try again later"
             }
+            ErrorCode::AlreadySubscribed => "Already subscribed to this subscription",
         }
     }
 }

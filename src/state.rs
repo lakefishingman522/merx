@@ -17,11 +17,11 @@ use tokio_tungstenite::{connect_async, tungstenite};
 use tracing::{error, info, warn};
 
 use crate::{
-    error::MerxErrorResponse,
+    error::{MerxErrorResponse, ErrorCode},
     md_handlers::{cbbo_v1, market_depth_v1},
     routes_config::MarketDataType,
-    symbols::{CurrencyPairsResponse, Symbols},
-    user::{User, UserResponse, Users},
+    symbols::Symbols,
+    user::{UserResponse, Users},
 };
 
 pub type Tx = Sender<axum::extract::ws::Message>;
@@ -66,7 +66,7 @@ impl ConnectionStateStruct {
         sender: Tx,
         market_data_type: MarketDataType,
         connection_state: ConnectionState,
-    ) -> Result<(), String> {
+    ) -> Result<(), MerxErrorResponse> {
         let mut subscription_state = self.subscription_state.write().unwrap();
         let mut subscription_count = self.subscription_count.write().unwrap();
 
@@ -78,7 +78,9 @@ impl ConnectionStateStruct {
 
         if let Some(subscription_clients) = subscription_state.get_mut(subscription) {
             if subscription_clients.contains_key(client_address) {
-                return Err("Client already subscribed to this subscription".to_string());
+                return Err(MerxErrorResponse::new(
+                    ErrorCode::AlreadySubscribed,
+                ));
             }
             subscription_clients.insert(*client_address, sender);
         } else {

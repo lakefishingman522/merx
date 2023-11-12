@@ -24,7 +24,7 @@ pub fn exchange_to_cbag_market(
     client_id: &str,
     non_agg_prices: bool,
     customer_specific: bool,
-    public: bool,
+    _public: bool,
 ) -> String {
     let mut exchange_str = match exchange.to_lowercase().as_str() {
         "gdax" => String::from("COINBASE"),

@@ -11,7 +11,6 @@ use crate::{
     user::UserResponse,
 };
 
-use std::time::Instant;
 #[allow(unused_imports)]
 use tracing::{debug, error, info, warn};
 
@@ -159,7 +158,7 @@ pub async fn authenticate_token(
                     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
                     continue;
                 }
-                ErrorCode::AuthServiceUnavailable;
+                return Err(ErrorCode::AuthServiceUnavailable);
             }
         }
     }

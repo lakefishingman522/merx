@@ -30,6 +30,7 @@ pub struct UserResponse {
     exchanges: Vec<ExchangeResponse>,
 }
 
+#[allow(dead_code)]
 struct Exchange {
     slug: String,
     name: String,
@@ -42,6 +43,7 @@ struct Exchange {
     cbag_market: String,
 }
 
+#[allow(dead_code)]
 pub struct User {
     username: String,
     token: String,
@@ -95,7 +97,7 @@ impl Users {
             .map(|(_, exchange)| exchange.cbag_market.clone())
             .collect::<Vec<String>>()
             .join(",");
-        let mut user = User {
+        let user = User {
             username: user_response.username.clone(),
             token: token.to_string(),
             organization: user_response.organization.clone(),

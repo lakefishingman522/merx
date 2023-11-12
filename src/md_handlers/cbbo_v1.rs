@@ -1,4 +1,3 @@
-use crate::error::{ErrorCode, MerxErrorResponse};
 use crate::md_handlers::helper::cbag_market_to_exchange;
 use crate::{routes_config::MarketDataType, state::ConnectionState};
 // use futures_channel::mpsc::Sender;
@@ -119,17 +118,17 @@ pub fn handle_subscription(
         }
     }
 
-    let all_cbag_markets = match connection_state.get_all_cbag_markets_string(username) {
-        Ok(markets) => markets,
-        Err(e) => {
-            sender
-                .try_send(axum::extract::ws::Message::Text(
-                    serde_json::json!({ "error": e }).to_string(),
-                ))
-                .unwrap();
-            return;
-        }
-    };
+    // let all_cbag_markets = match connection_state.get_all_cbag_markets_string(username) {
+    //     Ok(markets) => markets,
+    //     Err(e) => {
+    //         sender
+    //             .try_send(axum::extract::ws::Message::Text(
+    //                 serde_json::json!({ "error": e }).to_string(),
+    //             ))
+    //             .unwrap();
+    //         return;
+    //     }
+    // };
 
     let client_id = match connection_state.get_client_id(username) {
         Ok(id) => id,
@@ -158,16 +157,25 @@ pub fn handle_subscription(
         parsed_sub_msg.currency_pair, parsed_sub_msg.size_filter, 1000, client_id, "merx"
     );
 
-    connection_state.add_client_to_subscription(
+    match connection_state.add_client_to_subscription(
         client_address,
         &ws_endpoint,
         cbag_uri.clone(),
-        sender,
+        sender.clone(),
         market_data_type,
         Arc::clone(&connection_state),
-    );
+    ) {
+        Ok(_) => {}
+        Err(merx_error_response) => {
+            sender
+                .try_send(axum::extract::ws::Message::Text(
+                    merx_error_response.to_json_str(),
+                ))
+                .unwrap();
+            return;
+        }
 
-    // subscribe_to_market_data(&ws_endpoint, connection_state.clone(), cbag_uri, );
+    }
 }
 
 //TODO: change error to something more specific

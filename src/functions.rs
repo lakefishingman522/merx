@@ -10,7 +10,6 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 // Import the TryStreamExt trait
 use lazy_static::lazy_static;
 use tokio::time::{sleep, Duration};
-use tokio_tungstenite::tungstenite::protocol::Message;
 
 // for axum
 use axum::{body::Body, extract::ws::Message as axum_Message, http::Uri};
@@ -27,7 +26,6 @@ use axum::headers;
 
 //allows to extract the IP of connecting user
 use axum::extract::connect_info::ConnectInfo;
-use axum::extract::ws::CloseFrame;
 use axum::extract::Extension;
 use reqwest::Client;
 use tracing::{error, info, warn};
@@ -37,10 +35,7 @@ use tracing::{error, info, warn};
 use crate::md_handlers::{cbbo_v1, market_depth_v1};
 use crate::routes_config::{MarketDataType, SubscriptionType, ROUTES, SUB_TYPE};
 use crate::state::ConnectionState;
-use crate::{
-    auth::check_token_and_authenticate,
-    md_handlers::rest_cost_calculator_v1::RestCostCalculatorV1RequestBody,
-};
+use crate::auth::check_token_and_authenticate;
 
 pub type Tx = Sender<axum::extract::ws::Message>;
 // pub type ConnectionState = Arc<RwLock<HashMap<String, HashMap<SocketAddr, Tx>>>>;
@@ -74,24 +69,6 @@ pub struct URIs {
 }
 
 // pub type ConnectionState = Arc<RwLock<ConnectionStateStruct>>;
-
-// helper function for conversions from tungstenite message to axum message
-fn from_tungstenite(message: Message) -> Option<axum::extract::ws::Message> {
-    match message {
-        Message::Text(text) => Some(axum_Message::Text(text)),
-        Message::Binary(binary) => Some(axum_Message::Binary(binary)),
-        Message::Ping(ping) => Some(axum_Message::Ping(ping)),
-        Message::Pong(pong) => Some(axum_Message::Pong(pong)),
-        Message::Close(Some(close)) => Some(axum_Message::Close(Some(CloseFrame {
-            code: close.code.into(),
-            reason: close.reason,
-        }))),
-        Message::Close(None) => Some(axum_Message::Close(None)),
-        // we can ignore `Frame` frames as recommended by the tungstenite maintainers
-        // https://github.com/snapview/tungstenite-rs/issues/268
-        Message::Frame(_) => None,
-    }
-}
 
 // #[allow(unused_assignments)]
 // pub fn subscribe_to_market_data(
@@ -397,7 +374,7 @@ pub async fn axum_ws_handler(
     let auth_uri = uris.auth_uri.clone();
     let uris_clone = uris.clone();
     // if this isn't a direct subscription, then we have to authenticate
-    let username = if !matches!(subscription_type, SubscriptionType::DIRECT) {
+    let username = if !matches!(subscription_type, SubscriptionType::Direct) {
         match check_token_and_authenticate(
             &headers,
             &Query(params),
@@ -529,15 +506,25 @@ async fn axum_handle_socket(
 
     // if its a direct subscription we can add it straight away
     // else we will wait for the client to send us subscription messages
-    if matches!(subscription_type, SubscriptionType::DIRECT) {
-        connection_state.add_client_to_subscription(
+    if matches!(subscription_type, SubscriptionType::Direct) {
+        match connection_state.add_client_to_subscription(
             &client_address,
             &request_endpoint_str,
             uris.cbag_uri,
-            tx,
+            tx.clone(),
             market_data_type.clone(),
             Arc::clone(&connection_state),
-        );
+        ){
+            Ok(_) => {}
+            Err(merx_error_response) => {
+                tx.try_send(axum::extract::ws::Message::Text(
+                        merx_error_response.to_json_str(),
+                    ))
+                    .unwrap();
+                return;
+            }
+    
+        }
 
         // add_client_to_subscription(
         //     &connection_state,
@@ -560,7 +547,7 @@ async fn axum_handle_socket(
         loop {
             sleep(Duration::from_millis(1000)).await;
             {
-                if matches!(subscription_type_clone, SubscriptionType::SUBSCRIPTION)
+                if matches!(subscription_type_clone, SubscriptionType::Subscription)
                     && (tokio::time::Instant::now() - connection_time < Duration::from_secs(20))
                 {
                     continue;
@@ -670,7 +657,7 @@ async fn axum_handle_socket(
             }
             axum::extract::ws::Message::Text(msg_str) => {
                 info!("{} Received a text frame", &client_address);
-                if matches!(subscription_type, SubscriptionType::SUBSCRIPTION) {
+                if matches!(subscription_type, SubscriptionType::Subscription) {
                     match market_data_type {
                         MarketDataType::CbboV1 => {
                             cbbo_v1::handle_subscription(
@@ -694,7 +681,7 @@ async fn axum_handle_socket(
                                 &username.clone(),
                             );
                         }
-                        RestCostCalculatorV1RequestBody => {
+                        MarketDataType::RestCostCalculatorV1 => {
                             error!("unexpected Market Data Type");
                         }
                         MarketDataType::Direct => {
@@ -911,7 +898,7 @@ pub async fn authenticate_user(
 pub async fn get_cached_response(
     State(connection_state): State<ConnectionState>,
     Extension(uris): Extension<URIs>,
-    OriginalUri(original_uri): OriginalUri,
+    // OriginalUri(original_uri): OriginalUri,
     headers: HeaderMap,
     Query(params): Query<HashMap<String, String>>,
     req: Request<Body>,

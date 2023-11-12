@@ -1,4 +1,4 @@
-use crate::md_handlers::helper::{cbag_market_to_exchange, exchange_to_cbag_market};
+use crate::md_handlers::helper::cbag_market_to_exchange;
 use crate::{routes_config::MarketDataType, state::ConnectionState};
 // use futures_channel::mpsc::Sender;
 use serde::{Deserialize, Serialize};
@@ -121,16 +121,25 @@ pub fn handle_subscription(
         parsed_sub_msg.currency_pair, cbag_markets, depth_limit,
     );
 
-    connection_state.add_client_to_subscription(
+    match connection_state.add_client_to_subscription(
         client_address,
         &ws_endpoint,
         cbag_uri.clone(),
-        sender,
+        sender.clone(),
         market_data_type,
         Arc::clone(&connection_state),
-    );
+    ) {
+        Ok(_) => {}
+        Err(merx_error_response) => {
+            sender
+                .try_send(axum::extract::ws::Message::Text(
+                    merx_error_response.to_json_str(),
+                ))
+                .unwrap();
+            return;
+        }
 
-    // subscribe_to_market_data(&ws_endpoint, connection_state.clone(), cbag_uri, );
+    }
 }
 
 //TODO: change error to something more specific
