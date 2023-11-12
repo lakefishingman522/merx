@@ -1,3 +1,4 @@
+use crate::error::{ErrorCode, MerxErrorResponse};
 use crate::md_handlers::helper::cbag_market_to_exchange;
 use crate::{routes_config::MarketDataType, state::ConnectionState};
 // use futures_channel::mpsc::Sender;
@@ -36,7 +37,7 @@ pub fn handle_subscription(
     if !connection_state.is_ready() {
         sender
             .try_send(axum::extract::ws::Message::Text(
-                serde_json::json!({"error": "Server initializing, please try later"}).to_string(),
+                MerxErrorResponse::new(ErrorCode::ServerInitializing).to_json_str(),
             ))
             .unwrap();
         return;

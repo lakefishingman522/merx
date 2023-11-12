@@ -268,7 +268,10 @@ async fn axum_handle_socket(
     let recv_task = incoming.try_for_each(|msg| {
         match msg {
             axum::extract::ws::Message::Close(_msg) => {
-                info!("{} {} Received a close frame", &client_address, recv_task_username);
+                info!(
+                    "{} {} Received a close frame",
+                    &client_address, recv_task_username
+                );
             }
             axum::extract::ws::Message::Ping(_msg) => {
                 // info!("{} Received a ping frame", &client_address);
@@ -363,7 +366,10 @@ async fn axum_handle_socket(
     connection_state.remove_client_from_state(&client_address);
 
     // returning from the handler closes the websocket connection
-    info!("Websocket context {} {} destroyed", client_address, username);
+    info!(
+        "Websocket context {} {} destroyed",
+        client_address, username
+    );
 }
 
 pub async fn get_state(
