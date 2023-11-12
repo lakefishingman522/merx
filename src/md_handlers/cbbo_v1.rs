@@ -174,7 +174,6 @@ pub fn handle_subscription(
                 .unwrap();
             return;
         }
-
     }
 }
 

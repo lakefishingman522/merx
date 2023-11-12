@@ -32,10 +32,10 @@ use tracing::{error, info, warn};
 
 // use crate::routes_config::{ROUTES, SUB_TYPE};
 
+use crate::auth::check_token_and_authenticate;
 use crate::md_handlers::{cbbo_v1, market_depth_v1};
 use crate::routes_config::{MarketDataType, SubscriptionType, ROUTES, SUB_TYPE};
 use crate::state::ConnectionState;
-use crate::auth::check_token_and_authenticate;
 
 pub type Tx = Sender<axum::extract::ws::Message>;
 // pub type ConnectionState = Arc<RwLock<HashMap<String, HashMap<SocketAddr, Tx>>>>;
@@ -514,16 +514,15 @@ async fn axum_handle_socket(
             tx.clone(),
             market_data_type.clone(),
             Arc::clone(&connection_state),
-        ){
+        ) {
             Ok(_) => {}
             Err(merx_error_response) => {
                 tx.try_send(axum::extract::ws::Message::Text(
-                        merx_error_response.to_json_str(),
-                    ))
-                    .unwrap();
+                    merx_error_response.to_json_str(),
+                ))
+                .unwrap();
                 return;
             }
-    
         }
 
         // add_client_to_subscription(

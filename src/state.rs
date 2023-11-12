@@ -17,7 +17,7 @@ use tokio_tungstenite::{connect_async, tungstenite};
 use tracing::{error, info, warn};
 
 use crate::{
-    error::{MerxErrorResponse, ErrorCode},
+    error::{ErrorCode, MerxErrorResponse},
     md_handlers::{cbbo_v1, market_depth_v1},
     routes_config::MarketDataType,
     symbols::Symbols,
@@ -78,9 +78,7 @@ impl ConnectionStateStruct {
 
         if let Some(subscription_clients) = subscription_state.get_mut(subscription) {
             if subscription_clients.contains_key(client_address) {
-                return Err(MerxErrorResponse::new(
-                    ErrorCode::AlreadySubscribed,
-                ));
+                return Err(MerxErrorResponse::new(ErrorCode::AlreadySubscribed));
             }
             subscription_clients.insert(*client_address, sender);
         } else {
@@ -365,20 +363,16 @@ pub fn subscribe_to_market_data(
                 // warn!("Disconnecting clients {}", active_listeners.len());
                 //TODO: send something about the subscription here if it wasn't valid
                 for recp in active_listeners {
-                    // send a message that the subscription was not valid
-
-                    // let ms = axum_Message::Close(Some(CloseFrame {
-                    //     code: 1001,
-                    //     reason: "Requested endpoint not found".into(),
-                    // }));
-                    // info!("Sending close frame");
-
-                    // match recp.send(ms) {
-                    //     Ok(_) => (),
-                    //     Err(_try_send_error) => {
-                    //         warn!("Sending error, client likely disconnected.");
-                    //     }
-                    // }
+                    // let clients know the subscription was invalid
+                    let ms = axum_Message::Text(
+                        MerxErrorResponse::new(ErrorCode::InvalidRequest).to_json_str(),
+                    );
+                    match recp.try_send(ms) {
+                        Ok(_) => (),
+                        Err(_try_send_error) => {
+                            // warn!("Sending error, client likely disconnected.");
+                        }
+                    }
                 }
 
                 // clean up subscription counts for those clients who were connected
