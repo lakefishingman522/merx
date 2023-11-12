@@ -58,13 +58,16 @@ pub fn handle_subscription(
     };
 
     //check that the currency pair is valid
-    if !connection_state.is_pair_valid(&parsed_sub_msg.currency_pair) {
-        sender
-            .try_send(axum::extract::ws::Message::Text(
-                serde_json::json!({"error": "invalid currency pair"}).to_string(),
-            ))
-            .unwrap();
-        return;
+    match connection_state.is_pair_valid(&parsed_sub_msg.currency_pair) {
+        Ok(_) => {}
+        Err(merx_error_response) => {
+            sender
+                .try_send(axum::extract::ws::Message::Text(
+                    merx_error_response.to_json_str(),
+                ))
+                .unwrap();
+            return;
+        }
     }
 
     //check that the depth limit is between 1-200

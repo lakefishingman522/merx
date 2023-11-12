@@ -3,6 +3,8 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::{ErrorCode, MerxErrorResponse};
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Currency {
     slug: String,
@@ -66,23 +68,39 @@ impl Symbols {
         !self.cbbo_sizes.is_empty()
     }
 
-    pub fn is_pair_valid(&self, pair: &str) -> bool {
-        self.cbbo_sizes.contains_key(pair)
+    pub fn is_pair_valid(&self, pair: &str) -> Result<(), MerxErrorResponse> {
+        if self.has_symbols() {
+            if let Some(_) = self.cbbo_sizes.get(pair) {
+                return Ok(());
+            }
+            return Err(MerxErrorResponse::new(ErrorCode::InvalidCurrencyPair));
+        }
+        return Err(MerxErrorResponse::new(ErrorCode::AwaitingSymbolData));
     }
 
-    pub fn is_size_filter_valid(&self, pair: &str, size_filter: f64) -> Result<(), String> {
-        if let Some(cbbo_sizes) = self.cbbo_sizes.get(pair) {
-            for cbbo_size in cbbo_sizes {
-                if size_filter == *cbbo_size {
-                    return Ok(());
+    pub fn is_size_filter_valid(
+        &self,
+        pair: &str,
+        size_filter: f64,
+    ) -> Result<(), MerxErrorResponse> {
+        if self.has_symbols() {
+            if let Some(cbbo_sizes) = self.cbbo_sizes.get(pair) {
+                for cbbo_size in cbbo_sizes {
+                    if size_filter == *cbbo_size {
+                        return Ok(());
+                    }
                 }
+                return Err(MerxErrorResponse::new_and_override_error_text(
+                    ErrorCode::InvalidSizeFilter,
+                    &format!(
+                        "{} is an invalid size filter for {}. Available size filters are {:?}",
+                        size_filter, pair, cbbo_sizes
+                    ),
+                ));
             }
-            return Err(format!(
-                "{} is an invalid size filter for {}. Available size filters are {:?}",
-                size_filter, pair, cbbo_sizes
-            ));
+            return Err(MerxErrorResponse::new(ErrorCode::InvalidCurrencyPair));
         }
-        return Err("Invalid currency pair".to_string());
+        return Err(MerxErrorResponse::new(ErrorCode::AwaitingSymbolData));
     }
 
     pub fn get_currency_pairs_json(&self) -> Result<String, String> {

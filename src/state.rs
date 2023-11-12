@@ -17,6 +17,7 @@ use tokio_tungstenite::{connect_async, tungstenite};
 use tracing::{error, info, warn};
 
 use crate::{
+    error::MerxErrorResponse,
     md_handlers::{cbbo_v1, market_depth_v1},
     routes_config::MarketDataType,
     symbols::{CurrencyPairsResponse, Symbols},
@@ -246,12 +247,16 @@ impl ConnectionStateStruct {
         symbols_lock.has_symbols()
     }
 
-    pub fn is_pair_valid(&self, pair: &str) -> bool {
+    pub fn is_pair_valid(&self, pair: &str) -> Result<(), MerxErrorResponse> {
         let symbols_lock = self.symbols.read().unwrap();
         symbols_lock.is_pair_valid(pair)
     }
 
-    pub fn is_size_filter_valid(&self, pair: &str, size_filter: f64) -> Result<(), String> {
+    pub fn is_size_filter_valid(
+        &self,
+        pair: &str,
+        size_filter: f64,
+    ) -> Result<(), MerxErrorResponse> {
         let symbols_lock = self.symbols.read().unwrap();
         symbols_lock.is_size_filter_valid(pair, size_filter)
     }
@@ -293,7 +298,7 @@ impl ConnectionStateStruct {
         let users = self.users.read().unwrap();
         users.get_client_id(username)
     }
-    
+
     pub fn add_or_update_cached_response(&self, endpoint: &str, response: String) {
         let mut symbols_lock = self.symbols.write().unwrap();
         symbols_lock.add_or_update_cached_response(endpoint, response)

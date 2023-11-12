@@ -71,17 +71,16 @@ pub fn handle_subscription(
     };
 
     //validate the currency pair
-    if !connection_state.is_pair_valid(&parsed_sub_msg.currency_pair) {
-        sender
-            .try_send(axum::extract::ws::Message::Text(
-                MerxErrorResponse::new(
-                    ErrorCode::InvalidCurrencyPair,
-                    Some("Please check currency pair"),
-                )
-                .to_json_str(),
-            ))
-            .unwrap();
-        return;
+    match connection_state.is_pair_valid(&parsed_sub_msg.currency_pair) {
+        Ok(_) => {}
+        Err(merx_error_response) => {
+            sender
+                .try_send(axum::extract::ws::Message::Text(
+                    merx_error_response.to_json_str(),
+                ))
+                .unwrap();
+            return;
+        }
     }
 
     let parsed_size_filter: f64 = match parsed_sub_msg.size_filter.parse() {
@@ -108,15 +107,16 @@ pub fn handle_subscription(
     }
 
     //validate the size filter is valid
-    if let Err(e) =
-        connection_state.is_size_filter_valid(&parsed_sub_msg.currency_pair, parsed_size_filter)
-    {
-        sender
-            .try_send(axum::extract::ws::Message::Text(
-                serde_json::json!({ "error": e }).to_string(),
-            ))
-            .unwrap();
-        return;
+    match connection_state.is_size_filter_valid(&parsed_sub_msg.currency_pair, parsed_size_filter) {
+        Ok(_) => {}
+        Err(merx_error_response) => {
+            sender
+                .try_send(axum::extract::ws::Message::Text(
+                    merx_error_response.to_json_str(),
+                ))
+                .unwrap();
+            return;
+        }
     }
 
     let all_cbag_markets = match connection_state.get_all_cbag_markets_string(username) {
@@ -155,11 +155,7 @@ pub fn handle_subscription(
 
     let ws_endpoint: String = format!(
         "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&user={}",
-        parsed_sub_msg.currency_pair,
-        parsed_sub_msg.size_filter,
-        1000,
-        client_id,
-        "merx"
+        parsed_sub_msg.currency_pair, parsed_sub_msg.size_filter, 1000, client_id, "merx"
     );
 
     connection_state.add_client_to_subscription(
