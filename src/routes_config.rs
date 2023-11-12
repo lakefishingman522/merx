@@ -12,9 +12,9 @@ pub enum MarketDataType {
 
 #[derive(Debug, Clone)]
 pub enum SubscriptionType {
-    DIRECT,
-    SUBSCRIPTION,
-    AUTHENTICATED_REST,
+    Direct,
+    Subscription,
+    AuthenticatedRest,
 }
 pub static ROUTES: phf::Map<&'static str, MarketDataType> = phf_map! {
     // "/legacy-cbbo/:symbol" => Routes::CBBO,
@@ -25,7 +25,7 @@ pub static ROUTES: phf::Map<&'static str, MarketDataType> = phf_map! {
 
 pub static SUB_TYPE: phf::Map<&'static str, SubscriptionType> = phf_map! {
     // "/legacy-cbbo/:symbol" => Routes::CBBO,
-    "/api/streaming/cbbo" => SubscriptionType::SUBSCRIPTION,
-    "/api/streaming/market_depth" => SubscriptionType::SUBSCRIPTION,
-    "/api/cost_calculator" => SubscriptionType::AUTHENTICATED_REST,
+    "/api/streaming/cbbo" => SubscriptionType::Subscription,
+    "/api/streaming/market_depth" => SubscriptionType::Subscription,
+    "/api/cost_calculator" => SubscriptionType::AuthenticatedRest,
 };

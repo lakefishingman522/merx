@@ -1,10 +1,8 @@
 use chrono::prelude::*;
 use chrono::Duration;
 //TODO: remove chrono and use tokio::time::Instant
-use std::collections::HashMap;
-
-use log::info;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::md_handlers::helper::exchange_to_cbag_market;
 
@@ -30,6 +28,7 @@ pub struct UserResponse {
     exchanges: Vec<ExchangeResponse>,
 }
 
+#[allow(dead_code)]
 struct Exchange {
     slug: String,
     name: String,
@@ -42,6 +41,7 @@ struct Exchange {
     cbag_market: String,
 }
 
+#[allow(dead_code)]
 pub struct User {
     username: String,
     token: String,
@@ -84,7 +84,7 @@ impl Users {
                 non_aggregated_prices: exchange_response.non_aggregated_prices,
                 public: exchange_response.public,
                 customer_specific: exchange_response.customer_specific,
-                cbag_market: cbag_market,
+                cbag_market,
             };
 
             exchanges.insert(exchange.slug.clone(), exchange);
@@ -95,12 +95,12 @@ impl Users {
             .map(|(_, exchange)| exchange.cbag_market.clone())
             .collect::<Vec<String>>()
             .join(",");
-        let mut user = User {
+        let user = User {
             username: user_response.username.clone(),
             token: token.to_string(),
             organization: user_response.organization.clone(),
             client_id: user_response.client_id.clone(),
-            exchanges: exchanges,
+            exchanges,
             time_validated: Utc::now(),
             all_cbag_markets: cbag_markets_string,
         };
@@ -120,7 +120,6 @@ impl Users {
         let user = self.users.values().find(|user| user.token == token);
         match user {
             Some(user) => {
-                info!("User found in state");
                 let now = Utc::now();
                 let time_validated = user.time_validated;
                 // if a validated since duration has been provided,
@@ -191,7 +190,7 @@ impl Users {
         let user = self.users.get(username);
         match user {
             Some(user) => {
-                let exchanges: Vec<&str> = exchanges_string.split(",").collect();
+                let exchanges: Vec<&str> = exchanges_string.split(',').collect();
                 let mut cbag_markets = Vec::new();
                 for exchange in exchanges {
                     if let Some(exchange) = user.exchanges.get(exchange) {
@@ -238,6 +237,14 @@ impl Users {
         let user = self.users.get(username);
         match user {
             Some(user) => Ok(user.all_cbag_markets.clone()),
+            None => Err(format!("User {} not found", username)),
+        }
+    }
+
+    pub fn get_client_id(&self, username: &str) -> Result<String, String> {
+        let user = self.users.get(username);
+        match user {
+            Some(user) => Ok(user.client_id.clone()),
             None => Err(format!("User {} not found", username)),
         }
     }

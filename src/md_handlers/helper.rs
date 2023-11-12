@@ -8,7 +8,7 @@ pub fn cbag_market_to_exchange(market: &str) -> String {
         None => market,
     };
 
-    let market = match market.find("-") {
+    let market = match market.find('-') {
         Some(index) => &market[index + 1..],
         None => market,
     };
@@ -24,7 +24,7 @@ pub fn exchange_to_cbag_market(
     client_id: &str,
     non_agg_prices: bool,
     customer_specific: bool,
-    public: bool,
+    _public: bool,
 ) -> String {
     let mut exchange_str = match exchange.to_lowercase().as_str() {
         "gdax" => String::from("COINBASE"),

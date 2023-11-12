@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
-use std::{f32::consts::E, fmt};
+use serde::Serialize;
+use std::fmt;
 
 #[derive(Debug, Serialize)]
 pub struct MerxErrorResponse {
@@ -8,20 +8,21 @@ pub struct MerxErrorResponse {
     error_text: String,
 }
 
-//create a constructor for errorresponse
+//TODO: This should be put into an enum that contains all sendable messages
 impl MerxErrorResponse {
-    pub fn new(error_code: ErrorCode, override_error_text: Option<&str>) -> Self {
-        let err_text = match override_error_text {
-            Some(text) => text.to_string(),
-            None => error_code.default_error_text().to_string(),
-        };
-
-        let error_str = error_code.to_string();
-
+    pub fn new(error_code: ErrorCode) -> Self {
         Self {
-            error_code: error_code,
-            error: error_str,
-            error_text: err_text,
+            error_code,
+            error: error_code.to_string(),
+            error_text: error_code.default_error_text().to_string(),
+        }
+    }
+
+    pub fn new_and_override_error_text(error_code: ErrorCode, error_text: &str) -> Self {
+        Self {
+            error_code,
+            error: error_code.to_string(),
+            error_text: error_text.to_string(),
         }
     }
 
@@ -48,6 +49,9 @@ pub enum ErrorCode {
     InvalidToken = 101002,
     AuthServiceUnavailable = 101003,
     AuthInternalError = 101004,
+    AwaitingSymbolData = 101005,
+    AlreadySubscribed = 101006,
+    InvalidRequest = 101007,
 }
 
 // write a custom serializer for ErrorCode that uses the number as the value
@@ -70,6 +74,9 @@ impl fmt::Display for ErrorCode {
             ErrorCode::InvalidToken => write!(f, "INVALID_TOKEN"),
             ErrorCode::AuthServiceUnavailable => write!(f, "AUTH_SERVICE_UNAVAILABLE"),
             ErrorCode::AuthInternalError => write!(f, "AUTH_INTERNAL_ERROR"),
+            ErrorCode::AwaitingSymbolData => write!(f, "AWAITING_SYMBOL_DATA"),
+            ErrorCode::AlreadySubscribed => write!(f, "ALREADY_SUBSCRIBED"),
+            ErrorCode::InvalidRequest => write!(f, "INVALID_REQUEST"),
         }
     }
 }
@@ -88,6 +95,11 @@ impl ErrorCode {
             ErrorCode::AuthInternalError => {
                 "Authentication service internal error. Please try again later"
             }
+            ErrorCode::AwaitingSymbolData => {
+                "Server is initializing and awaiting metadata. Please try again later"
+            }
+            ErrorCode::AlreadySubscribed => "Already subscribed to this subscription",
+            ErrorCode::InvalidRequest => "Unable to get data. Please check request parameters",
         }
     }
 }

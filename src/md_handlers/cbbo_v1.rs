@@ -1,4 +1,3 @@
-use crate::error::{ErrorCode, MerxErrorResponse};
 use crate::md_handlers::helper::cbag_market_to_exchange;
 use crate::{routes_config::MarketDataType, state::ConnectionState};
 // use futures_channel::mpsc::Sender;
@@ -71,17 +70,16 @@ pub fn handle_subscription(
     };
 
     //validate the currency pair
-    if !connection_state.is_pair_valid(&parsed_sub_msg.currency_pair) {
-        sender
-            .try_send(axum::extract::ws::Message::Text(
-                MerxErrorResponse::new(
-                    ErrorCode::InvalidCurrencyPair,
-                    Some("Please check currency pair"),
-                )
-                .to_json_str(),
-            ))
-            .unwrap();
-        return;
+    match connection_state.is_pair_valid(&parsed_sub_msg.currency_pair) {
+        Ok(_) => {}
+        Err(merx_error_response) => {
+            sender
+                .try_send(axum::extract::ws::Message::Text(
+                    merx_error_response.to_json_str(),
+                ))
+                .unwrap();
+            return;
+        }
     }
 
     let parsed_size_filter: f64 = match parsed_sub_msg.size_filter.parse() {
@@ -108,19 +106,32 @@ pub fn handle_subscription(
     }
 
     //validate the size filter is valid
-    if let Err(e) =
-        connection_state.is_size_filter_valid(&parsed_sub_msg.currency_pair, parsed_size_filter)
-    {
-        sender
-            .try_send(axum::extract::ws::Message::Text(
-                serde_json::json!({ "error": e }).to_string(),
-            ))
-            .unwrap();
-        return;
+    match connection_state.is_size_filter_valid(&parsed_sub_msg.currency_pair, parsed_size_filter) {
+        Ok(_) => {}
+        Err(merx_error_response) => {
+            sender
+                .try_send(axum::extract::ws::Message::Text(
+                    merx_error_response.to_json_str(),
+                ))
+                .unwrap();
+            return;
+        }
     }
 
-    let all_cbag_markets = match connection_state.get_all_cbag_markets_string(username) {
-        Ok(markets) => markets,
+    // let all_cbag_markets = match connection_state.get_all_cbag_markets_string(username) {
+    //     Ok(markets) => markets,
+    //     Err(e) => {
+    //         sender
+    //             .try_send(axum::extract::ws::Message::Text(
+    //                 serde_json::json!({ "error": e }).to_string(),
+    //             ))
+    //             .unwrap();
+    //         return;
+    //     }
+    // };
+
+    let client_id = match connection_state.get_client_id(username) {
+        Ok(id) => id,
         Err(e) => {
             sender
                 .try_send(axum::extract::ws::Message::Text(
@@ -131,26 +142,38 @@ pub fn handle_subscription(
         }
     };
 
+    // let ws_endpoint: String = format!(
+    //     "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&source={}&user={}",
+    //     parsed_sub_msg.currency_pair,
+    //     parsed_sub_msg.size_filter,
+    //     1000,
+    //     "merx",
+    //     all_cbag_markets,
+    //     "merx"
+    // );
+
     let ws_endpoint: String = format!(
-        "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&source={}&user={}",
-        parsed_sub_msg.currency_pair,
-        parsed_sub_msg.size_filter,
-        1000,
-        "merx",
-        all_cbag_markets,
-        "merx"
+        "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&user={}",
+        parsed_sub_msg.currency_pair, parsed_sub_msg.size_filter, 1000, client_id, "merx"
     );
 
-    connection_state.add_client_to_subscription(
+    match connection_state.add_client_to_subscription(
         client_address,
         &ws_endpoint,
-        cbag_uri.clone(),
-        sender,
+        cbag_uri,
+        sender.clone(),
         market_data_type,
-        Arc::clone(&connection_state),
-    );
-
-    // subscribe_to_market_data(&ws_endpoint, connection_state.clone(), cbag_uri, );
+        Arc::clone(connection_state),
+    ) {
+        Ok(_) => {}
+        Err(merx_error_response) => {
+            sender
+                .try_send(axum::extract::ws::Message::Text(
+                    merx_error_response.to_json_str(),
+                ))
+                .unwrap();
+        }
+    }
 }
 
 //TODO: change error to something more specific
