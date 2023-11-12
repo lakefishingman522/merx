@@ -12,7 +12,7 @@ pub struct MerxErrorResponse {
 impl MerxErrorResponse {
     pub fn new(error_code: ErrorCode) -> Self {
         Self {
-            error_code: error_code,
+            error_code,
             error: error_code.to_string(),
             error_text: error_code.default_error_text().to_string(),
         }
@@ -20,7 +20,7 @@ impl MerxErrorResponse {
 
     pub fn new_and_override_error_text(error_code: ErrorCode, error_text: &str) -> Self {
         Self {
-            error_code: error_code,
+            error_code,
             error: error_code.to_string(),
             error_text: error_text.to_string(),
         }

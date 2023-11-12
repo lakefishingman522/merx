@@ -70,11 +70,7 @@ impl ConnectionStateStruct {
         let mut subscription_state = self.subscription_state.write().unwrap();
         let mut subscription_count = self.subscription_count.write().unwrap();
 
-        let already_subscribed = if subscription_state.contains_key(subscription) {
-            true
-        } else {
-            false
-        };
+        let already_subscribed = subscription_state.contains_key(subscription);
 
         if let Some(subscription_clients) = subscription_state.get_mut(subscription) {
             if subscription_clients.contains_key(client_address) {
@@ -96,7 +92,7 @@ impl ConnectionStateStruct {
 
         if !already_subscribed {
             let _handle = subscribe_to_market_data(
-                &subscription,
+                subscription,
                 connection_state,
                 cbag_uri,
                 market_data_type,
@@ -196,7 +192,7 @@ impl ConnectionStateStruct {
         user_response: &UserResponse,
     ) -> Result<String, String> {
         let mut users = self.users.write().unwrap();
-        users.add_or_update_user(token, &user_response)
+        users.add_or_update_user(token, user_response)
     }
 
     pub fn check_user_in_state(
@@ -223,7 +219,7 @@ impl ConnectionStateStruct {
         exchanges: &Vec<String>,
     ) -> Result<String, String> {
         let users = self.users.read().unwrap();
-        users.validate_exchanges_vector(username, &exchanges)
+        users.validate_exchanges_vector(username, exchanges)
     }
 
     pub fn get_all_cbag_markets_string(&self, username: &str) -> Result<String, String> {
@@ -404,7 +400,7 @@ pub fn subscribe_to_market_data(
                 Ok(response) => response,
                 Err(err) => {
                     // Error occurred or connection timed out
-                    error!("Timeout Error: {:?}", err);
+                    error!("Timeout Error: {:?} for {}", err, &ws_endpoint);
                     consecutive_errors += 1;
                     continue;
                 }

@@ -357,19 +357,19 @@ pub async fn axum_ws_handler(
 
     let base_route = req.uri().path().trim_end_matches('/');
 
-    if !ROUTES.contains_key(&base_route) {
+    if !ROUTES.contains_key(base_route) {
         warn!("Endpoint not available {}", base_route);
         return (StatusCode::BAD_REQUEST, "Endpoint not available").into_response();
         //TODO
     }
-    let route = ROUTES.get(&base_route.to_string()).unwrap();
+    let route = ROUTES.get(base_route).unwrap();
 
-    if !SUB_TYPE.contains_key(&base_route) {
+    if !SUB_TYPE.contains_key(base_route) {
         warn!("Endpoint not available {}", base_route);
         return (StatusCode::BAD_REQUEST, "Endpoint not available").into_response();
         //TODO
     }
-    let subscription_type = SUB_TYPE.get(&base_route.to_string()).unwrap();
+    let subscription_type = SUB_TYPE.get(base_route).unwrap();
 
     let auth_uri = uris.auth_uri.clone();
     let uris_clone = uris.clone();
@@ -403,7 +403,7 @@ pub async fn axum_ws_handler(
             uris_clone,
             route,
             subscription_type,
-            username.clone(),
+            username,
         )
     })
 }
@@ -489,8 +489,8 @@ async fn axum_handle_socket(
     let (tx, mut rx): (Sender<axum_Message>, Receiver<axum_Message>) = channel(*SENDER_BOUND);
     // let (tx, rx) = unbounded();
 
-    let thread_id = thread::current().id();
-    println!("This code is running on thread {:?}", thread_id);
+    // let thread_id = thread::current().id();
+    // println!("This code is running on thread {:?}", thread_id);
 
     let request_endpoint_str = request_endpoint.to_string();
     let recv_task_tx = tx.clone();
@@ -655,7 +655,7 @@ async fn axum_handle_socket(
                 // info!("{} Received a pong frame", &client_address);
             }
             axum::extract::ws::Message::Text(msg_str) => {
-                info!("{} Received a text frame", &client_address);
+                // info!("{} Received a text frame", &client_address);
                 if matches!(subscription_type, SubscriptionType::Subscription) {
                     match market_data_type {
                         MarketDataType::CbboV1 => {
@@ -787,7 +787,7 @@ async fn axum_handle_socket(
     );
     // future::select(recv_task, receive_from_others).await;
     tokio::select! {
-        _ = recv_task => { info!("recv task ended");},
+        _ = recv_task => {},
         _ = receive_from_others => {
             info!("receive_from_others ended");
         },
@@ -912,31 +912,27 @@ pub async fn get_cached_response(
     {
         Ok(_) => {
             let endpoint = req.uri().path().trim_end_matches('/');
-            match connection_state.get_cached_response(&endpoint) {
-                Ok(response) => {
-                    return Response::builder()
-                        .status(StatusCode::OK)
-                        .header("content-type", "application/json")
-                        .body(Body::from(response))
-                        .unwrap();
-                }
+            match connection_state.get_cached_response(endpoint) {
+                Ok(response) => Response::builder()
+                    .status(StatusCode::OK)
+                    .header("content-type", "application/json")
+                    .body(Body::from(response))
+                    .unwrap(),
                 Err(err) => {
                     error!(
                         "Error getting cached response for endpoint {}: {}",
                         endpoint, err
                     );
-                    return Response::builder()
+                    Response::builder()
                         .status(StatusCode::SERVICE_UNAVAILABLE)
                         .body(Body::from("Awaiting data, please try later".to_string()))
-                        .unwrap();
+                        .unwrap()
                 }
-            };
+            }
         }
-        Err(_) => {
-            return Response::builder()
-                .status(StatusCode::UNAUTHORIZED)
-                .body(Body::from("Unauthorized".to_string()))
-                .unwrap()
-        }
+        Err(_) => Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Body::from("Unauthorized".to_string()))
+            .unwrap(),
     }
 }

@@ -58,7 +58,7 @@ impl Symbols {
         symbols: Symbols,
         currency_pairs_json: String,
     ) -> Result<(), String> {
-        self.cbbo_sizes = symbols.cbbo_sizes.clone();
+        self.cbbo_sizes = symbols.cbbo_sizes;
         self.currency_pairs_json_response = currency_pairs_json;
         self.time_validated = Utc::now();
         Ok(())
@@ -70,12 +70,12 @@ impl Symbols {
 
     pub fn is_pair_valid(&self, pair: &str) -> Result<(), MerxErrorResponse> {
         if self.has_symbols() {
-            if let Some(_) = self.cbbo_sizes.get(pair) {
+            if self.cbbo_sizes.get(pair).is_some() {
                 return Ok(());
             }
             return Err(MerxErrorResponse::new(ErrorCode::InvalidCurrencyPair));
         }
-        return Err(MerxErrorResponse::new(ErrorCode::AwaitingSymbolData));
+        Err(MerxErrorResponse::new(ErrorCode::AwaitingSymbolData))
     }
 
     pub fn is_size_filter_valid(
@@ -100,7 +100,7 @@ impl Symbols {
             }
             return Err(MerxErrorResponse::new(ErrorCode::InvalidCurrencyPair));
         }
-        return Err(MerxErrorResponse::new(ErrorCode::AwaitingSymbolData));
+        Err(MerxErrorResponse::new(ErrorCode::AwaitingSymbolData))
     }
 
     pub fn get_currency_pairs_json(&self) -> Result<String, String> {
@@ -108,7 +108,7 @@ impl Symbols {
         if !self.has_symbols() {
             return Err("Awaiting symbol data".to_string());
         }
-        return Ok(self.currency_pairs_json_response.clone());
+        Ok(self.currency_pairs_json_response.clone())
     }
 
     pub fn add_or_update_cached_response(&mut self, endpoint: &str, response: String) {
@@ -120,6 +120,6 @@ impl Symbols {
             return Ok(response.clone());
         }
         //TODO have a better response here
-        return Err("not found".to_string());
+        Err("not found".to_string())
     }
 }

@@ -56,7 +56,7 @@ pub async fn check_token_and_authenticate(
                 ErrorCode::InvalidToken => {
                     connection_state.invalidate_token(token);
                     warn!("Invalid token");
-                    return Err("Invalid token".to_string());
+                    Err("Invalid token".to_string())
                 }
                 _ => {
                     // if we were unable to authenticate the token for any other reason
@@ -66,7 +66,7 @@ pub async fn check_token_and_authenticate(
                         return Ok(username);
                     }
                     warn!("Auth service unavailable");
-                    return Err("Auth service unavailable".to_string());
+                    Err("Auth service unavailable".to_string())
                 }
             }
         }
@@ -222,7 +222,7 @@ pub async fn get_data_from_auth_server(
                     return Err(format!("Unable to get {}", endpoint));
                 }
             };
-            return Ok(json_string);
+            Ok(json_string)
         }
         Err(e) => Err(format!("Unable to get {}: {:?}", endpoint, e)),
     }

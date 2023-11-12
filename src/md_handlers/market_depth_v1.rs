@@ -124,10 +124,10 @@ pub fn handle_subscription(
     match connection_state.add_client_to_subscription(
         client_address,
         &ws_endpoint,
-        cbag_uri.clone(),
+        cbag_uri,
         sender.clone(),
         market_data_type,
-        Arc::clone(&connection_state),
+        Arc::clone(connection_state),
     ) {
         Ok(_) => {}
         Err(merx_error_response) => {
@@ -136,7 +136,6 @@ pub fn handle_subscription(
                     merx_error_response.to_json_str(),
                 ))
                 .unwrap();
-            return;
         }
     }
 }

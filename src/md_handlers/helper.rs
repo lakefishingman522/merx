@@ -8,7 +8,7 @@ pub fn cbag_market_to_exchange(market: &str) -> String {
         None => market,
     };
 
-    let market = match market.find("-") {
+    let market = match market.find('-') {
         Some(index) => &market[index + 1..],
         None => market,
     };

@@ -2,8 +2,6 @@ use chrono::prelude::*;
 use chrono::Duration;
 //TODO: remove chrono and use tokio::time::Instant
 use std::collections::HashMap;
-
-use log::info;
 use serde::{Deserialize, Serialize};
 
 use crate::md_handlers::helper::exchange_to_cbag_market;
@@ -86,7 +84,7 @@ impl Users {
                 non_aggregated_prices: exchange_response.non_aggregated_prices,
                 public: exchange_response.public,
                 customer_specific: exchange_response.customer_specific,
-                cbag_market: cbag_market,
+                cbag_market,
             };
 
             exchanges.insert(exchange.slug.clone(), exchange);
@@ -102,7 +100,7 @@ impl Users {
             token: token.to_string(),
             organization: user_response.organization.clone(),
             client_id: user_response.client_id.clone(),
-            exchanges: exchanges,
+            exchanges,
             time_validated: Utc::now(),
             all_cbag_markets: cbag_markets_string,
         };
@@ -122,7 +120,6 @@ impl Users {
         let user = self.users.values().find(|user| user.token == token);
         match user {
             Some(user) => {
-                info!("User found in state");
                 let now = Utc::now();
                 let time_validated = user.time_validated;
                 // if a validated since duration has been provided,
@@ -193,7 +190,7 @@ impl Users {
         let user = self.users.get(username);
         match user {
             Some(user) => {
-                let exchanges: Vec<&str> = exchanges_string.split(",").collect();
+                let exchanges: Vec<&str> = exchanges_string.split(',').collect();
                 let mut cbag_markets = Vec::new();
                 for exchange in exchanges {
                     if let Some(exchange) = user.exchanges.get(exchange) {
