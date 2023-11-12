@@ -1,8 +1,11 @@
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use std::fmt;
 
 #[derive(Debug, Serialize)]
+
 pub struct MerxErrorResponse {
+    #[serde(serialize_with = "serialize_type")]
+    r#type: &'static str,
     error_code: ErrorCode,
     error: String,
     error_text: String,
@@ -12,6 +15,7 @@ pub struct MerxErrorResponse {
 impl MerxErrorResponse {
     pub fn new(error_code: ErrorCode) -> Self {
         Self {
+            r#type: "error",
             error_code,
             error: error_code.to_string(),
             error_text: error_code.default_error_text().to_string(),
@@ -20,6 +24,7 @@ impl MerxErrorResponse {
 
     pub fn new_and_override_error_text(error_code: ErrorCode, error_text: &str) -> Self {
         Self {
+            r#type: "error",
             error_code,
             error: error_code.to_string(),
             error_text: error_text.to_string(),
@@ -29,13 +34,21 @@ impl MerxErrorResponse {
     pub fn to_json_str(&self) -> String {
         serde_json::to_string(self).unwrap_or(
             serde_json::json!(
-            {   "error_code": 101001,
+                {"type": "error",
+                "error_code": 101001,
                 "error": "RESPONSE_ERROR",
-                "error_text": "Unable to generate error response"
+                "error_text": "Unable to generate error response",
             })
             .to_string(),
         )
     }
+}
+
+fn serialize_type<S>(_: &str, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serializer.serialize_str("error")
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
