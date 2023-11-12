@@ -70,7 +70,6 @@ pub enum ErrorCode {
     ServerError = 10100,
 }
 
-// write a custom serializer for ErrorCode that uses the number as the value
 impl serde::ser::Serialize for ErrorCode {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
