@@ -12,8 +12,8 @@ use tokio::sync::mpsc::Sender;
 use axum::extract::ws::CloseFrame;
 use axum::extract::ws::Message as axum_Message;
 use tokio::time::{sleep, timeout, Duration};
-use tokio_tungstenite::{connect_async, tungstenite};
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::{connect_async, tungstenite};
 use tracing::{error, info, warn};
 
 use crate::{
@@ -293,6 +293,16 @@ impl ConnectionStateStruct {
         let users = self.users.read().unwrap();
         users.get_client_id(username)
     }
+    
+    pub fn add_or_update_cached_response(&self, endpoint: &str, response: String) {
+        let mut symbols_lock = self.symbols.write().unwrap();
+        symbols_lock.add_or_update_cached_response(endpoint, response)
+    }
+
+    pub fn get_cached_response(&self, endpoint: &str) -> Result<String, String> {
+        let symbols_lock = self.symbols.read().unwrap();
+        symbols_lock.get_cached_response(endpoint)
+    }
 }
 
 fn parse_tung_response_body_to_str(body: &Option<Vec<u8>>) -> Result<String, String> {
@@ -300,12 +310,11 @@ fn parse_tung_response_body_to_str(body: &Option<Vec<u8>>) -> Result<String, Str
     match body {
         Some(body) => match std::str::from_utf8(body) {
             Ok(body) => Ok(body.to_string()),
-            Err(_) => Err("Unable to parse body".to_string())
+            Err(_) => Err("Unable to parse body".to_string()),
         },
-        None => Err("Empty body".to_string())
+        None => Err("Empty body".to_string()),
     }
 }
-
 
 #[allow(unused_assignments)]
 pub fn subscribe_to_market_data(
@@ -327,7 +336,7 @@ pub fn subscribe_to_market_data(
         let mut bad_request = false;
         // TODO: after x number of timeouts, should check if clients are still connected
         loop {
-            if bad_request || consecutive_errors >= 5  {
+            if bad_request || consecutive_errors >= 5 {
                 // disconnect from all sockets
                 warn!(
                     "Unable to connect, closing down subscription {}",
@@ -407,13 +416,14 @@ pub fn subscribe_to_market_data(
                     match err {
                         tungstenite::Error::Http(response) => {
                             if response.status() == 400 {
-                                let body_str = match parse_tung_response_body_to_str(response.body()) {
-                                    Ok(body_str) => body_str,
-                                    Err(err) => {
-                                        error!("Error parsing body: {}", err);
-                                        "Unable to parse body".to_string()
-                                    }
-                                };
+                                let body_str =
+                                    match parse_tung_response_body_to_str(response.body()) {
+                                        Ok(body_str) => body_str,
+                                        Err(err) => {
+                                            error!("Error parsing body: {}", err);
+                                            "Unable to parse body".to_string()
+                                        }
+                                    };
                                 //convert body to a string
                                 warn!("Connection Error Status 400: {:?}", body_str);
                                 bad_request = true;
@@ -423,7 +433,7 @@ pub fn subscribe_to_market_data(
                         _ => {
                             // another error which was not a HTTP error
                             error!("Connection Error connecting to {}: {:?}", &ws_endpoint, err);
-                        },
+                        }
                     }
 
                     consecutive_errors += 1;

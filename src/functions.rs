@@ -906,18 +906,15 @@ pub async fn authenticate_user(
             .body(Body::from("Unauthorized".to_string()))
             .unwrap(),
     }
-
-    // Response::builder()
-    //     .status(StatusCode::OK)
-    //     .body(Body::from("Authorized".to_string()))
-    //     .unwrap()
 }
 
-pub async fn currency_pairs(
+pub async fn get_cached_response(
     State(connection_state): State<ConnectionState>,
     Extension(uris): Extension<URIs>,
+    OriginalUri(original_uri): OriginalUri,
     headers: HeaderMap,
     Query(params): Query<HashMap<String, String>>,
+    req: Request<Body>,
 ) -> impl IntoResponse {
     match check_token_and_authenticate(
         &headers,
@@ -928,21 +925,23 @@ pub async fn currency_pairs(
     .await
     {
         Ok(_) => {
-            match connection_state.get_currency_pairs_json() {
-                Ok(currency_pairs_json_string) => {
+            let endpoint = req.uri().path().trim_end_matches('/');
+            match connection_state.get_cached_response(&endpoint) {
+                Ok(response) => {
                     return Response::builder()
                         .status(StatusCode::OK)
                         .header("content-type", "application/json")
-                        .body(Body::from(currency_pairs_json_string))
+                        .body(Body::from(response))
                         .unwrap();
                 }
                 Err(err) => {
-                    error!("Error getting currency pairs: {}", err);
+                    error!(
+                        "Error getting cached response for endpoint {}: {}",
+                        endpoint, err
+                    );
                     return Response::builder()
                         .status(StatusCode::SERVICE_UNAVAILABLE)
-                        .body(Body::from(
-                            "Awaiting currency pairs, please try later".to_string(),
-                        ))
+                        .body(Body::from("Awaiting data, please try later".to_string()))
                         .unwrap();
                 }
             };
