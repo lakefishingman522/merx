@@ -216,7 +216,7 @@ async fn axum_handle_socket(
             Err(merx_error_response) => {
                 match tx.try_send(axum::extract::ws::Message::Text(
                     merx_error_response.to_json_str(),
-                )){
+                )) {
                     Ok(_) => {}
                     Err(_try_send_error) => {
                         // warn!("Buffer probably full.");
