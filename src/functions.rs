@@ -214,10 +214,14 @@ async fn axum_handle_socket(
         ) {
             Ok(_) => {}
             Err(merx_error_response) => {
-                tx.try_send(axum::extract::ws::Message::Text(
+                match tx.try_send(axum::extract::ws::Message::Text(
                     merx_error_response.to_json_str(),
-                ))
-                .unwrap();
+                )){
+                    Ok(_) => {}
+                    Err(_try_send_error) => {
+                        // warn!("Buffer probably full.");
+                    }
+                };
                 return;
             }
         }

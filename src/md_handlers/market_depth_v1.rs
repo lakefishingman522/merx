@@ -35,23 +35,30 @@ pub fn handle_subscription(
 ) {
     //check that state is ready
     if !connection_state.is_ready() {
-        sender
+        match sender
             .try_send(axum::extract::ws::Message::Text(
                 MerxErrorResponse::new(ErrorCode::ServerInitializing).to_json_str(),
-            ))
-            .unwrap();
+            )){
+                Ok(_) => {}
+                Err(_try_send_error) => {
+                        // warn!("Buffer probably full.");
+                    }
+            };
         return;
     }
 
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
         Ok(msg) => msg,
         Err(e) => {
-            //TODO: remove the unwrap from here
-            sender
+            match sender
                 .try_send(axum::extract::ws::Message::Text(
                     MerxErrorResponse::new(ErrorCode::InvalidSubscriptionMessage).to_json_str(),
-                ))
-                .unwrap();
+                )){
+                    Ok(_) => {}
+                    Err(_try_send_error) => {
+                        // warn!("Buffer probably full.");
+                    }
+                };
             tracing::error!("Error parsing subscription message: {}", e);
             return;
         }
@@ -61,11 +68,15 @@ pub fn handle_subscription(
     match connection_state.is_pair_valid(&parsed_sub_msg.currency_pair) {
         Ok(_) => {}
         Err(merx_error_response) => {
-            sender
+            match sender
                 .try_send(axum::extract::ws::Message::Text(
                     merx_error_response.to_json_str(),
-                ))
-                .unwrap();
+                )){
+                    Ok(_) => {}
+                    Err(_try_send_error) => {
+                        // warn!("Buffer probably full.");
+                    }
+                };
             return;
         }
     }
@@ -73,29 +84,37 @@ pub fn handle_subscription(
     //check that the depth limit is between 1-200
     if let Some(depth_limit) = parsed_sub_msg.depth_limit {
         if !(1..=200).contains(&depth_limit) {
-            sender
+            match sender
                 .try_send(axum::extract::ws::Message::Text(
                     MerxErrorResponse::new_and_override_error_text(
                         ErrorCode::InvalidDepthLimit,
                         "Depth limit must be between 1 and 200",
                     )
                     .to_json_str(),
-                ))
-                .unwrap();
+                )){
+                    Ok(_) => {}
+                    Err(_try_send_error) => {
+                        // warn!("Buffer probably full.");
+                    }
+                };
             return;
         }
     }
 
     if parsed_sub_msg.exchanges.is_empty() {
-        sender
+        match sender
             .try_send(axum::extract::ws::Message::Text(
                 MerxErrorResponse::new_and_override_error_text(
                     ErrorCode::InvalidExchanges,
                     "No Exchanges Found. At least one exchange must be provided",
                 )
                 .to_json_str(),
-            ))
-            .unwrap();
+            )){
+                Ok(_) => {}
+                Err(_try_send_error) => {
+                    // warn!("Buffer probably full.");
+                }
+            };
         return;
     }
 
@@ -103,11 +122,15 @@ pub fn handle_subscription(
         match connection_state.validate_exchanges_vector(username, &parsed_sub_msg.exchanges) {
             Ok(cbag_markets) => cbag_markets,
             Err(merx_error_response) => {
-                sender
+                match sender
                     .try_send(axum::extract::ws::Message::Text(
                         merx_error_response.to_json_str(),
-                    ))
-                    .unwrap();
+                    )){
+                        Ok(_) => {}
+                        Err(_try_send_error) => {
+                            // warn!("Buffer probably full.");
+                        }
+                    };
                 return;
             }
         };
@@ -142,8 +165,8 @@ pub fn handle_subscription(
                 merx_error_response.to_json_str(),
             )) {
                 Ok(_) => {}
-                Err(e) => {
-                    tracing::error!("Error sending message: {}", e);
+                Err(_try_send_error) => {
+                            // warn!("Buffer probably full.");
                 }
             }
         }
