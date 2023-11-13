@@ -67,7 +67,7 @@ pub enum ErrorCode {
     AuthInternalError = 101004,
     ServerInitializing = 101005,
     AlreadySubscribed = 101006,
-    ServerError = 10100,
+    ServerError = 101007,
 }
 
 impl serde::ser::Serialize for ErrorCode {
@@ -124,3 +124,5 @@ impl ErrorCode {
         }
     }
 }
+
+//generate a markdown table of error name, error code, and description
