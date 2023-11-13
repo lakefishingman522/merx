@@ -1,13 +1,14 @@
 pub fn cbag_market_to_exchange(market: &str) -> String {
-    let market = match market.strip_suffix("#NA") {
+    //change market to lowercase
+    let market = market.to_lowercase();
+    let market = match market.strip_suffix("#na") {
+        Some(market) => market,
+        None => &market,
+    };
+    let market = match market.strip_suffix("%23na") {
         Some(market) => market,
         None => market,
     };
-    let market = match market.strip_suffix("%23NA") {
-        Some(market) => market,
-        None => market,
-    };
-
     let market = match market.find('-') {
         Some(index) => &market[index + 1..],
         None => market,
