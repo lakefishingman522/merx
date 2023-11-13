@@ -26,6 +26,7 @@ struct OrderLevel {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[allow(dead_code)]
 struct LegacyCbboUpdate {
     // this is the form of the update received from cbag
     product: String,
@@ -38,9 +39,11 @@ struct LegacyCbboUpdate {
     asks: Vec<OrderLevel>,
     properties: HashMap<String, Value>, //TODO: no idea what this is
     last_rx_nanos: Option<u64>,
+    #[serde(skip_serializing)]
     last_rx_nanos_market: Option<String>,
     internal_latency_nanos: Option<u64>,
     last_source_nanos: Option<u64>,
+    #[serde(skip_serializing)]
     last_source_nanos_market: Option<String>,
 }
 
