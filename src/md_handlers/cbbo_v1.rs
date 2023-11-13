@@ -215,6 +215,13 @@ pub fn transform_message(message: Message) -> Result<Message, String> {
         .map(|market| cbag_market_to_exchange(market))
         .collect();
 
+    for bid in parsed_message.bids.iter_mut() {
+        bid.exchange = cbag_market_to_exchange(&bid.exchange);
+    }
+    for ask in parsed_message.asks.iter_mut() {
+        ask.exchange = cbag_market_to_exchange(&ask.exchange);
+    }
+
     let transformed_message = match serde_json::to_string(&parsed_message) {
         Ok(msg) => Message::Text(msg),
         Err(e) => {
