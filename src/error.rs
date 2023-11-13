@@ -60,6 +60,7 @@ pub enum ErrorCode {
     InvalidDepthLimit = 100004,
     InvalidExchanges = 100005,
     InvalidRequest = 100006,
+    InvalidSample = 100007,
     // system errors
     ResponseError = 101001,
     InvalidToken = 101002,
@@ -87,13 +88,14 @@ impl fmt::Display for ErrorCode {
             ErrorCode::InvalidSizeFilter => write!(f, "INVALID_SIZE_FILTER"),
             ErrorCode::InvalidDepthLimit => write!(f, "INVALID_DEPTH_LIMIT"),
             ErrorCode::InvalidExchanges => write!(f, "INVALID_EXCHANGES"),
+            ErrorCode::InvalidRequest => write!(f, "INVALID_REQUEST"),
+            ErrorCode::InvalidSample => write!(f, "INVALID_SAMPLE"),
             ErrorCode::ResponseError => write!(f, "RESPONSE_ERROR"),
             ErrorCode::InvalidToken => write!(f, "INVALID_TOKEN"),
             ErrorCode::AuthServiceUnavailable => write!(f, "AUTH_SERVICE_UNAVAILABLE"),
             ErrorCode::AuthInternalError => write!(f, "AUTH_INTERNAL_ERROR"),
             ErrorCode::ServerInitializing => write!(f, "AWAITING_SYMBOL_DATA"),
             ErrorCode::AlreadySubscribed => write!(f, "ALREADY_SUBSCRIBED"),
-            ErrorCode::InvalidRequest => write!(f, "INVALID_REQUEST"),
             ErrorCode::ServerError => write!(f, "SERVER_ERROR"),
         }
     }
@@ -103,10 +105,14 @@ impl ErrorCode {
     fn default_error_text(&self) -> &'static str {
         match self {
             ErrorCode::InvalidCurrencyPair => "Please check currency pair",
-            ErrorCode::InvalidSubscriptionMessage => "Unable to parse subscription message",
+            ErrorCode::InvalidSubscriptionMessage => {
+                "Unable to parse subscription message. Please check all parameter types are correct"
+            }
             ErrorCode::InvalidSizeFilter => "Please check size filter is valid",
             ErrorCode::InvalidDepthLimit => "Please check depth limit is valid",
             ErrorCode::InvalidExchanges => "Please check exchanges are valid",
+            ErrorCode::InvalidRequest => "Unable to get data. Please check request parameters",
+            ErrorCode::InvalidSample => "Please check sample parameter is valid",
             ErrorCode::ResponseError => "Unable to generate error response",
             ErrorCode::InvalidToken => "Invalid Token. Please try again with a valid token",
             ErrorCode::AuthServiceUnavailable => {
@@ -119,7 +125,6 @@ impl ErrorCode {
                 "Server is initializing and awaiting metadata. Please try again later"
             }
             ErrorCode::AlreadySubscribed => "Already subscribed to this subscription",
-            ErrorCode::InvalidRequest => "Unable to get data. Please check request parameters",
             ErrorCode::ServerError => "Unexpected Server Error",
         }
     }

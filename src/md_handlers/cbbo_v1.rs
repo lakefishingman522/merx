@@ -1,6 +1,8 @@
+use crate::error::{ErrorCode, MerxErrorResponse};
 use crate::md_handlers::helper::cbag_market_to_exchange;
 use crate::{routes_config::MarketDataType, state::ConnectionState};
 // use futures_channel::mpsc::Sender;
+use core::f64;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
@@ -14,6 +16,7 @@ pub type Tx = Sender<axum::extract::ws::Message>;
 struct SubscriptionMessage {
     currency_pair: String,
     size_filter: String,
+    sample: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -61,7 +64,7 @@ pub fn handle_subscription(
         Ok(msg) => msg,
         Err(e) => {
             match sender.try_send(axum::extract::ws::Message::Text(
-                serde_json::json!({"error": "unable to parse subscription message"}).to_string(),
+                MerxErrorResponse::new(ErrorCode::InvalidSubscriptionMessage).to_json_str(),
             )) {
                 Ok(_) => {}
                 Err(_try_send_error) => {
@@ -93,7 +96,11 @@ pub fn handle_subscription(
         Ok(size_filter) => size_filter,
         Err(e) => {
             match sender.try_send(axum::extract::ws::Message::Text(
-                serde_json::json!({"error": "size_filter must be a number"}).to_string(),
+                MerxErrorResponse::new_and_override_error_text(
+                    ErrorCode::InvalidSizeFilter,
+                    "Could not parse size filter into a decimal",
+                )
+                .to_json_str(),
             )) {
                 Ok(_) => {}
                 Err(_try_send_error) => {
@@ -108,8 +115,11 @@ pub fn handle_subscription(
     //validate that size_filter is positive
     if parsed_size_filter < 0.0 {
         match sender.try_send(axum::extract::ws::Message::Text(
-            serde_json::json!({"error": "size_filter must be greater than or equal to 0"})
-                .to_string(),
+            MerxErrorResponse::new_and_override_error_text(
+                ErrorCode::InvalidSizeFilter,
+                "Size filter must be positive",
+            )
+            .to_json_str(),
         )) {
             Ok(_) => {}
             Err(_try_send_error) => {
@@ -118,6 +128,47 @@ pub fn handle_subscription(
         }
         {};
     }
+
+    let interval_ms: u32 = match parsed_sub_msg.sample {
+        Some(sample) => match sample.parse::<f64>() {
+            Ok(sample_seconds) => {
+                // check sample is between 0.1 and 60
+                if !(0.1..=60.0).contains(&sample_seconds) {
+                    match sender.try_send(axum::extract::ws::Message::Text(
+                        MerxErrorResponse::new_and_override_error_text(
+                            ErrorCode::InvalidSample,
+                            "Sample must be between 0.1 and 60.0",
+                        )
+                        .to_json_str(),
+                    )) {
+                        Ok(_) => {}
+                        Err(_try_send_error) => {
+                            // warn!("Buffer probably full.");
+                        }
+                    };
+                    return;
+                }
+                (sample_seconds * 1000.0).round() as u32
+            }
+            Err(e) => {
+                match sender.try_send(axum::extract::ws::Message::Text(
+                    MerxErrorResponse::new_and_override_error_text(
+                        ErrorCode::InvalidSample,
+                        "Sample must be a number",
+                    )
+                    .to_json_str(),
+                )) {
+                    Ok(_) => {}
+                    Err(_try_send_error) => {
+                        // warn!("Buffer probably full.");
+                    }
+                };
+                tracing::error!("Error parsing sample: {}", e);
+                return;
+            }
+        },
+        None => 500,
+    };
 
     //validate the size filter is valid
     match connection_state.is_size_filter_valid(&parsed_sub_msg.currency_pair, parsed_size_filter) {
@@ -149,9 +200,9 @@ pub fn handle_subscription(
 
     let client_id = match connection_state.get_client_id(username) {
         Ok(id) => id,
-        Err(e) => {
+        Err(_) => {
             match sender.try_send(axum::extract::ws::Message::Text(
-                serde_json::json!({ "error": e }).to_string(),
+                MerxErrorResponse::new(ErrorCode::ServerError).to_json_str(),
             )) {
                 Ok(_) => {}
                 Err(_try_send_error) => {
@@ -174,7 +225,7 @@ pub fn handle_subscription(
 
     let ws_endpoint: String = format!(
         "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&user={}",
-        parsed_sub_msg.currency_pair, parsed_sub_msg.size_filter, 1000, client_id, "merx"
+        parsed_sub_msg.currency_pair, parsed_sub_msg.size_filter, interval_ms, client_id, "merx"
     );
 
     match connection_state.add_client_to_subscription(
