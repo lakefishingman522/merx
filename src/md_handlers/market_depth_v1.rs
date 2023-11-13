@@ -138,11 +138,14 @@ pub fn handle_subscription(
     ) {
         Ok(_) => {}
         Err(merx_error_response) => {
-            sender
-                .try_send(axum::extract::ws::Message::Text(
-                    merx_error_response.to_json_str(),
-                ))
-                .unwrap();
+            match sender.try_send(axum::extract::ws::Message::Text(
+                merx_error_response.to_json_str(),
+            )) {
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!("Error sending message: {}", e);
+                }
+            }
         }
     }
 }
