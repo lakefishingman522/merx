@@ -57,13 +57,16 @@ pub fn handle_subscription(
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
         Ok(msg) => msg,
         Err(e) => {
-            //TODO: remove the unwrap from here
-            sender
+            match sender
                 .try_send(axum::extract::ws::Message::Text(
                     serde_json::json!({"error": "unable to parse subscription message"})
                         .to_string(),
-                ))
-                .unwrap();
+                )){
+                    Ok(_) => {}
+                    Err(_try_send_error) => {
+                            // warn!("Buffer probably full.");
+                    }
+                };
             tracing::error!("Error parsing subscription message: {}", e);
             return;
         }
@@ -73,11 +76,13 @@ pub fn handle_subscription(
     match connection_state.is_pair_valid(&parsed_sub_msg.currency_pair) {
         Ok(_) => {}
         Err(merx_error_response) => {
-            sender
-                .try_send(axum::extract::ws::Message::Text(
-                    merx_error_response.to_json_str(),
-                ))
-                .unwrap();
+            match sender.try_send(axum::extract::ws::Message::Text(
+                    merx_error_response.to_json_str())) {
+                Ok(_) => {}
+                Err(_try_send_error) => {
+                    // warn!("Buffer probably full.");
+                }
+            }
             return;
         }
     }
@@ -85,11 +90,15 @@ pub fn handle_subscription(
     let parsed_size_filter: f64 = match parsed_sub_msg.size_filter.parse() {
         Ok(size_filter) => size_filter,
         Err(e) => {
-            sender
+            match sender
                 .try_send(axum::extract::ws::Message::Text(
                     serde_json::json!({"error": "size_filter must be a number"}).to_string(),
-                ))
-                .unwrap();
+                )){
+                    Ok(_) => {}
+                    Err(_try_send_error) => {
+                        // warn!("Buffer probably full.");
+                    }
+                };
             tracing::error!("Error parsing size filter: {}", e);
             return;
         }
@@ -97,23 +106,32 @@ pub fn handle_subscription(
 
     //validate that size_filter is positive
     if parsed_size_filter < 0.0 {
-        sender
+        match sender
             .try_send(axum::extract::ws::Message::Text(
                 serde_json::json!({"error": "size_filter must be greater than or equal to 0"})
                     .to_string(),
-            ))
-            .unwrap();
+            )){
+                Ok(_) => {}
+                Err(_try_send_error) => {
+                    // warn!("Buffer probably full.");
+                }
+            } {
+            };
     }
 
     //validate the size filter is valid
     match connection_state.is_size_filter_valid(&parsed_sub_msg.currency_pair, parsed_size_filter) {
         Ok(_) => {}
         Err(merx_error_response) => {
-            sender
+            match sender
                 .try_send(axum::extract::ws::Message::Text(
                     merx_error_response.to_json_str(),
-                ))
-                .unwrap();
+                )){
+                    Ok(_) => {}
+                    Err(_try_send_error) => {
+                        // warn!("Buffer probably full.");
+                    }
+                };
             return;
         }
     }
@@ -133,11 +151,15 @@ pub fn handle_subscription(
     let client_id = match connection_state.get_client_id(username) {
         Ok(id) => id,
         Err(e) => {
-            sender
+            match sender
                 .try_send(axum::extract::ws::Message::Text(
                     serde_json::json!({ "error": e }).to_string(),
-                ))
-                .unwrap();
+                )){
+                    Ok(_) => {}
+                    Err(_try_send_error) => {
+                        // warn!("Buffer probably full.");
+                    }
+                };
             return;
         }
     };
@@ -167,11 +189,15 @@ pub fn handle_subscription(
     ) {
         Ok(_) => {}
         Err(merx_error_response) => {
-            sender
+            match sender
                 .try_send(axum::extract::ws::Message::Text(
                     merx_error_response.to_json_str(),
-                ))
-                .unwrap();
+                )){
+                    Ok(_) => {}
+                    Err(_try_send_error) => {
+                        // warn!("Buffer probably full.");
+                    }
+                };
         }
     }
 }

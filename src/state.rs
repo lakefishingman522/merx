@@ -366,7 +366,7 @@ pub fn subscribe_to_market_data(
                     match recp.try_send(ms) {
                         Ok(_) => (),
                         Err(_try_send_error) => {
-                            // warn!("Sending error, client likely disconnected.");
+                            // warn!("Buffer probably full.");
                         }
                     }
                 }
