@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::{collections::HashMap, net::SocketAddr};
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::tungstenite::Message;
+use tracing::info;
 
 pub type Tx = Sender<axum::extract::ws::Message>;
 
@@ -16,7 +17,7 @@ pub type Tx = Sender<axum::extract::ws::Message>;
 struct SubscriptionMessage {
     currency_pair: String,
     size_filter: String,
-    sample: Option<String>,
+    sample: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -60,6 +61,7 @@ pub fn handle_subscription(
     market_data_type: MarketDataType,
     username: &str,
 ) {
+    info!("Received subscription message: {}", subscription_msg);
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
         Ok(msg) => msg,
         Err(e) => {
@@ -130,31 +132,12 @@ pub fn handle_subscription(
     }
 
     let interval_ms: u32 = match parsed_sub_msg.sample {
-        Some(sample) => match sample.parse::<f64>() {
-            Ok(sample_seconds) => {
-                // check sample is between 0.1 and 60
-                if !(0.1..=60.0).contains(&sample_seconds) {
-                    match sender.try_send(axum::extract::ws::Message::Text(
-                        MerxErrorResponse::new_and_override_error_text(
-                            ErrorCode::InvalidSample,
-                            "Sample must be between 0.1 and 60.0",
-                        )
-                        .to_json_str(),
-                    )) {
-                        Ok(_) => {}
-                        Err(_try_send_error) => {
-                            // warn!("Buffer probably full.");
-                        }
-                    };
-                    return;
-                }
-                (sample_seconds * 1000.0).round() as u32
-            }
-            Err(e) => {
+        Some(sample) => {
+            if !(0.1..=60.0).contains(&sample) {
                 match sender.try_send(axum::extract::ws::Message::Text(
                     MerxErrorResponse::new_and_override_error_text(
                         ErrorCode::InvalidSample,
-                        "Sample must be a number",
+                        "Sample must be between 0.1 and 60.0",
                     )
                     .to_json_str(),
                 )) {
@@ -163,10 +146,10 @@ pub fn handle_subscription(
                         // warn!("Buffer probably full.");
                     }
                 };
-                tracing::error!("Error parsing sample: {}", e);
                 return;
             }
-        },
+            (sample * 1000.0).round() as u32
+        }
         None => 500,
     };
 
