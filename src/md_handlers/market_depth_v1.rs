@@ -18,9 +18,15 @@ struct SubscriptionMessage {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct SnapshotUpdate {
+struct CbagSnapshotUpdate {
     bid: Vec<(String, String, HashMap<String, String>)>,
     ask: Vec<(String, String, HashMap<String, String>)>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct ClientSnapshotUpdate {
+    bids: Vec<(String, String, HashMap<String, String>)>,
+    asks: Vec<(String, String, HashMap<String, String>)>,
 }
 
 //TODO should this implement a trait?
@@ -170,7 +176,7 @@ pub fn handle_subscription(
 //TODO: change error to something more specific
 pub fn transform_message(message: Message) -> Result<Message, String> {
     //parse message into LegacyCbboUpdate
-    let mut parsed_message: SnapshotUpdate = match serde_json::from_str(&message.to_string()) {
+    let mut parsed_message: CbagSnapshotUpdate = match serde_json::from_str(&message.to_string()) {
         Ok(msg) => msg,
         Err(e) => {
             tracing::error!("Error parsing message: {}", e);
@@ -194,7 +200,12 @@ pub fn transform_message(message: Message) -> Result<Message, String> {
             .collect();
     }
 
-    let transformed_message = match serde_json::to_string(&parsed_message) {
+    let client_snapshot_update = ClientSnapshotUpdate {
+        bids: parsed_message.bid,
+        asks: parsed_message.ask,
+    };
+
+    let transformed_message = match serde_json::to_string(&client_snapshot_update) {
         Ok(msg) => Message::Text(msg),
         Err(e) => {
             tracing::error!("Error serializing message: {}", e);

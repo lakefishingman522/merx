@@ -1,9 +1,9 @@
-use crate::cached_routes::CACHED_ENDPOINTS;
+use crate::{auth::get_and_cache_currency_pairs_v2, cached_routes::CACHED_ENDPOINTS};
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 
 use crate::{
-    auth::{get_data_from_auth_server, get_symbols},
+    auth::get_data_from_auth_server,
     state::ConnectionState,
 };
 use tracing::{error, info, warn};
@@ -17,7 +17,8 @@ pub async fn start_pull_symbols_task(
         info!("Starting the pull symbols task");
         loop {
             // for api/currency_pairs
-            match get_symbols(&auth_uri, &token, connection_state.clone()).await {
+            match get_and_cache_currency_pairs_v2(&auth_uri, &token, connection_state.clone()).await
+            {
                 Ok(symbols) => symbols,
                 Err(e) => {
                     error!("Unable to get symbols: {}", e);
