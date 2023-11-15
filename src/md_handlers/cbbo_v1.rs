@@ -59,6 +59,7 @@ pub fn handle_subscription(
     sender: Tx,
     market_data_type: MarketDataType,
     username: &str,
+    market_data_id: Option<String>
 ) {
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
         Ok(msg) => msg,
@@ -223,6 +224,10 @@ pub fn handle_subscription(
     //     "merx"
     // );
 
+    let mut client_id = match market_data_id {
+        Some(id) =>  client_id.to_string() + ":" + id.as_str(),
+        None => client_id
+    };
     let ws_endpoint: String = format!(
         "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&user={}",
         parsed_sub_msg.currency_pair, parsed_sub_msg.size_filter, interval_ms, client_id, "merx"

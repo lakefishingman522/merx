@@ -139,7 +139,7 @@ pub async fn axum_ws_handler(
     let username = if !matches!(subscription_type, SubscriptionType::Direct) {
         match check_token_and_authenticate(
             &headers,
-            &Query(params),
+            &Query(params.clone()),
             &auth_uri,
             connection_state.clone(),
         )
@@ -155,6 +155,8 @@ pub async fn axum_ws_handler(
         "DIRECT".to_string()
     };
 
+    let market_data_id = params.get("market_data_id").cloned();
+
     // we can customize the callback by sending additional info such as original_uri.
     ws.on_upgrade(move |socket| {
         axum_handle_socket(
@@ -166,6 +168,7 @@ pub async fn axum_ws_handler(
             route,
             subscription_type,
             username,
+            market_data_id
         )
     })
 }
@@ -181,6 +184,7 @@ async fn axum_handle_socket(
     market_data_type: &MarketDataType,
     subscription_type: &SubscriptionType,
     username: String,
+    market_data_id: Option<String>
 ) {
     // added by karun
     let (tx, mut rx): (Sender<axum_Message>, Receiver<axum_Message>) = channel(*SENDER_BOUND);
@@ -307,6 +311,7 @@ async fn axum_handle_socket(
                                 recv_task_tx.clone(),
                                 market_data_type.clone(),
                                 &username.clone(),
+                                market_data_id.clone()
                             );
                         }
                         MarketDataType::MarketDepthV1 => {

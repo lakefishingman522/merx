@@ -102,7 +102,7 @@ pub async fn authenticate_token(
 
     connection_state.add_attempted_auth(token);
     let client = Client::new();
-    let auth_address = format!("https://{}/api/user/", auth_uri);
+    let auth_address = format!("http://{}/api/user/", auth_uri);
 
     let mut attempts: u8 = 0;
     let max_attempts = 4;
@@ -199,7 +199,7 @@ pub async fn get_data_from_auth_server(
     endpoint: &str,
 ) -> Result<String, String> {
     let client = Client::new();
-    let auth_address = format!("https://{}{}", auth_uri, endpoint);
+    let auth_address = format!("http://{}{}", auth_uri, endpoint);
 
     let res = client
         .get(auth_address.clone())
@@ -236,7 +236,7 @@ pub async fn get_symbols(
     let client = Client::new();
 
     //TODO: can be refactored to use the get_data_from_auth_server function
-    let currency_pairs_address = format!("https://{}/api/currency_pairs/", auth_uri);
+    let currency_pairs_address = format!("http://{}/api/currency_pairs/", auth_uri);
 
     let res = client
         .get(currency_pairs_address)
