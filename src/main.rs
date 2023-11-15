@@ -115,6 +115,8 @@ async fn main() {
         .route("/authenticate_user", get(authenticate_user))
         .route("/api/currency_pairs", get(get_cached_response))
         .route("/api/currency_pairs/", get(get_cached_response))
+        .route("/api/currency_pairs_v2", get(get_cached_response))
+        .route("/api/currency_pairs_v2/", get(get_cached_response))
         .route("/api/exchanges", get(get_cached_response))
         .route("/api/exchanges/", get(get_cached_response))
         .route("/api/exchange_fees", get(get_cached_response))

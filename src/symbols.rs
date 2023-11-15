@@ -42,6 +42,18 @@ pub struct CurrencyPairsResponse {
     pub exchanges: Vec<Exchange>,
     tick_size: String,
     product_type: Option<String>,
+    options_expiration: Option<String>,
+    options_strike_price: Option<String>,
+    options_side: Option<String>,
+}
+
+// Struct representing the main JSON object
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CurrencyPairsV2 {
+    pub count: i32,
+    pub next: Option<String>,
+    pub previous: Option<String>,
+    pub results: Vec<CurrencyPairsResponse>,
 }
 
 #[derive(Default)]
@@ -59,7 +71,9 @@ impl Symbols {
         currency_pairs_json: String,
     ) -> Result<(), String> {
         self.cbbo_sizes = symbols.cbbo_sizes;
-        self.currency_pairs_json_response = currency_pairs_json;
+        // self.currency_pairs_json_response = currency_pairs_json;
+        self.cached_responses
+            .insert("/api/currency_pairs_v2".to_string(), currency_pairs_json);
         self.time_validated = Utc::now();
         Ok(())
     }
