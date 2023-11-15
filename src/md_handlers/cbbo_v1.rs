@@ -17,7 +17,7 @@ pub type Tx = Sender<axum::extract::ws::Message>;
 struct SubscriptionMessage {
     currency_pair: String,
     size_filter: String,
-    sample: Option<f64>,
+    // sample: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -131,27 +131,28 @@ pub fn handle_subscription(
         {};
     }
 
-    let interval_ms: u32 = match parsed_sub_msg.sample {
-        Some(sample) => {
-            if !(0.1..=60.0).contains(&sample) {
-                match sender.try_send(axum::extract::ws::Message::Text(
-                    MerxErrorResponse::new_and_override_error_text(
-                        ErrorCode::InvalidSample,
-                        "Sample must be between 0.1 and 60.0",
-                    )
-                    .to_json_str(),
-                )) {
-                    Ok(_) => {}
-                    Err(_try_send_error) => {
-                        // warn!("Buffer probably full.");
-                    }
-                };
-                return;
-            }
-            (sample * 1000.0).round() as u32
-        }
-        None => 500,
-    };
+    let interval_ms = 500;
+    // let interval_ms: u32 = match parsed_sub_msg.sample {
+    //     Some(sample) => {
+    //         if !(0.1..=60.0).contains(&sample) {
+    //             match sender.try_send(axum::extract::ws::Message::Text(
+    //                 MerxErrorResponse::new_and_override_error_text(
+    //                     ErrorCode::InvalidSample,
+    //                     "Sample must be between 0.1 and 60.0",
+    //                 )
+    //                 .to_json_str(),
+    //             )) {
+    //                 Ok(_) => {}
+    //                 Err(_try_send_error) => {
+    //                     // warn!("Buffer probably full.");
+    //                 }
+    //             };
+    //             return;
+    //         }
+    //         (sample * 1000.0).round() as u32
+    //     }
+    //     None => 500,
+    // };
 
     //validate the size filter is valid
     match connection_state.is_size_filter_valid(&parsed_sub_msg.currency_pair, parsed_size_filter) {
