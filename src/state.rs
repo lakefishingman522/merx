@@ -20,13 +20,14 @@ use crate::{
     error::{ErrorCode, MerxErrorResponse},
     md_handlers::{cbbo_v1, market_depth_v1},
     routes_config::MarketDataType,
+    subscriptions::{SubTraits, Subscription},
     symbols::Symbols,
     user::{UserResponse, Users},
 };
 
 pub type Tx = Sender<axum::extract::ws::Message>;
 
-pub type SubscriptionState = HashMap<String, HashMap<SocketAddr, Tx>>;
+pub type SubscriptionState = HashMap<Subscription, HashMap<SocketAddr, Tx>>;
 pub type SubscriptionCount = HashMap<SocketAddr, u32>;
 
 // helper function for conversions from tungstenite message to axum message
@@ -61,18 +62,17 @@ impl ConnectionStateStruct {
     pub fn add_client_to_subscription(
         &self,
         client_address: &SocketAddr,
-        subscription: &str, //this is the endpoint str
+        subscription: Subscription, //this is the endpoint str
         cbag_uri: String,
         sender: Tx,
-        market_data_type: MarketDataType,
         connection_state: ConnectionState,
     ) -> Result<(), MerxErrorResponse> {
         let mut subscription_state = self.subscription_state.write().unwrap();
         let mut subscription_count = self.subscription_count.write().unwrap();
 
-        let already_subscribed = subscription_state.contains_key(subscription);
+        let already_subscribed = subscription_state.contains_key(&subscription);
 
-        if let Some(subscription_clients) = subscription_state.get_mut(subscription) {
+        if let Some(subscription_clients) = subscription_state.get_mut(&subscription) {
             if subscription_clients.contains_key(client_address) {
                 return Err(MerxErrorResponse::new(ErrorCode::AlreadySubscribed));
             }
@@ -80,7 +80,7 @@ impl ConnectionStateStruct {
         } else {
             let mut new_subscription_clients = HashMap::new();
             new_subscription_clients.insert(*client_address, sender);
-            subscription_state.insert(subscription.to_string(), new_subscription_clients);
+            subscription_state.insert(subscription.clone(), new_subscription_clients);
         }
 
         // increment subscription count
@@ -91,12 +91,7 @@ impl ConnectionStateStruct {
         }
 
         if !already_subscribed {
-            let _handle = subscribe_to_market_data(
-                subscription,
-                connection_state,
-                cbag_uri,
-                market_data_type,
-            );
+            let _handle = subscribe_to_market_data(subscription, connection_state, cbag_uri);
         }
         Ok(())
     }
@@ -104,7 +99,7 @@ impl ConnectionStateStruct {
     pub fn remove_client_from_subscription(
         &self,
         client_address: &SocketAddr,
-        subscription: &str,
+        subscription: &Subscription,
     ) -> Result<(), String> {
         let mut subscription_state = self.subscription_state.write().unwrap();
         let mut subscription_count = self.subscription_count.write().unwrap();
@@ -168,7 +163,7 @@ impl ConnectionStateStruct {
             for (client_address, _) in subscription_clients.iter() {
                 client_addresses.push(client_address.to_string());
             }
-            subscription_state_json.insert(subscription, client_addresses);
+            subscription_state_json.insert(subscription.get_url(), client_addresses);
         }
 
         //create a hashmap of client to subscription count
@@ -217,7 +212,7 @@ impl ConnectionStateStruct {
         &self,
         username: &str,
         exchanges: &Vec<String>,
-    ) -> Result<String, MerxErrorResponse> {
+    ) -> Result<Vec<String>, MerxErrorResponse> {
         let users = self.users.read().unwrap();
         users.validate_exchanges_vector(username, exchanges)
     }
@@ -319,11 +314,11 @@ fn parse_tung_response_body_to_str(body: &Option<Vec<u8>>) -> Result<String, Str
 
 #[allow(unused_assignments)]
 pub fn subscribe_to_market_data(
-    ws_endpoint: &str,
+    subscription: Subscription,
     connection_state: ConnectionState,
     cbag_uri: String,
-    market_data_type: MarketDataType,
 ) -> JoinHandle<()> {
+    let ws_endpoint = subscription.get_url();
     info!("Starting a new subscription to {}", ws_endpoint);
     //TODO: add this as a parameter
     let ws_endpoint = ws_endpoint.to_owned();
@@ -347,7 +342,7 @@ pub fn subscribe_to_market_data(
                     connection_state.subscription_state.write().unwrap(); //TODO: maybe only need a read lock when sending out the messages
                 let mut locked_subscription_count =
                     connection_state.subscription_count.write().unwrap();
-                let listener_hash_map = locked_subscription_state.get(&ws_endpoint);
+                let listener_hash_map = locked_subscription_state.get(&subscription);
                 let active_listeners = match listener_hash_map {
                     Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
                     None => {
@@ -373,8 +368,10 @@ pub fn subscribe_to_market_data(
 
                 // clean up subscription counts for those clients who were connected
                 // for this subscription
-                let client_subscriptions =
-                    locked_subscription_state.get(&ws_endpoint).unwrap().clone();
+                let client_subscriptions = locked_subscription_state
+                    .get(&subscription)
+                    .unwrap()
+                    .clone();
                 for (client_address, _) in client_subscriptions.iter() {
                     if let Some(count) = locked_subscription_count.get_mut(client_address) {
                         *count -= 1;
@@ -389,7 +386,7 @@ pub fn subscribe_to_market_data(
                 }
 
                 //remove the subscription from the connection state
-                locked_subscription_state.remove(&ws_endpoint);
+                locked_subscription_state.remove(&subscription);
                 info!(
                     "Number of subscriptions left: {}",
                     locked_subscription_state.len()
@@ -461,10 +458,10 @@ pub fn subscribe_to_market_data(
                     Ok(message_text) => {
                         // transform the raw message in accordance with its market data type
                         let message_transform_result: Result<Message, String> =
-                            match market_data_type {
+                            match subscription.get_market_data_type() {
                                 MarketDataType::CbboV1 => cbbo_v1::transform_message(message_text),
                                 MarketDataType::MarketDepthV1 => {
-                                    market_depth_v1::transform_message(message_text)
+                                    market_depth_v1::transform_message(message_text, &subscription)
                                 }
                                 MarketDataType::Direct => Ok(message_text),
                                 MarketDataType::RestCostCalculatorV1 => {
@@ -489,7 +486,7 @@ pub fn subscribe_to_market_data(
                         {
                             let locked_subscription_state =
                                 connection_state.subscription_state.read().unwrap();
-                            let listener_hash_map = locked_subscription_state.get(&ws_endpoint);
+                            let listener_hash_map = locked_subscription_state.get(&subscription);
                             let active_listeners = match listener_hash_map {
                                 Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
                                 None => {
@@ -519,7 +516,7 @@ pub fn subscribe_to_market_data(
                                 connection_state.subscription_state.write().unwrap();
                             // check again there are no new clients for the subsctiption
                             // client_subscriptions = connection_state_lock.
-                            let listener_hash_map = locked_subscription_state.get(&ws_endpoint);
+                            let listener_hash_map = locked_subscription_state.get(&subscription);
                             let active_listeners = match listener_hash_map {
                                 Some(listeners) => listeners,
                                 None => {
@@ -534,7 +531,7 @@ pub fn subscribe_to_market_data(
                             no more listeners",
                                     &ws_endpoint
                                 );
-                                locked_subscription_state.remove(&ws_endpoint);
+                                locked_subscription_state.remove(&subscription);
                                 closing_down = true;
                                 break;
                             }
