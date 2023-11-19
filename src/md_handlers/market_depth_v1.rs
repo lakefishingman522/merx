@@ -1,5 +1,6 @@
 use crate::error::{ErrorCode, MerxErrorResponse};
 use crate::md_handlers::helper::cbag_market_to_exchange;
+use crate::subscriptions::{SnapshotStruct, Subscription};
 use crate::{routes_config::MarketDataType, state::ConnectionState};
 // use futures_channel::mpsc::Sender;
 use serde::{Deserialize, Serialize};
@@ -27,6 +28,10 @@ struct CbagSnapshotUpdate {
 struct ClientSnapshotUpdate {
     bids: Vec<(String, String, HashMap<String, String>)>,
     asks: Vec<(String, String, HashMap<String, String>)>,
+    generated_timestamp: String,
+    product: String,
+    markets: Vec<String>,
+    depth_limit: u32,
 }
 
 //TODO should this implement a trait?
@@ -135,28 +140,24 @@ pub fn handle_subscription(
             }
         };
 
-    // let mut markets: String = String::new();
-    // for exchange in parsed_sub_msg.exchanges {
-    //     markets.push_str(&&exchange_to_cbag_market(&exchange));
-    //     markets.push_str(",");
-    // }
-
     let depth_limit = match parsed_sub_msg.depth_limit {
         Some(depth_limit) => depth_limit.to_string(),
         None => String::from("50"),
     };
 
-    let ws_endpoint: String = format!(
-        "/ws/snapshot/{}?markets={}&depth_limit={}&interval_ms=300",
-        parsed_sub_msg.currency_pair, cbag_markets, depth_limit,
-    );
+    let subscription = Subscription::Snapshot(SnapshotStruct::new(
+        market_data_type,
+        parsed_sub_msg.currency_pair,
+        cbag_markets,
+        depth_limit.parse::<u32>().unwrap(),
+        300,
+    ));
 
     match connection_state.add_client_to_subscription(
         client_address,
-        &ws_endpoint,
+        subscription,
         cbag_uri,
         sender.clone(),
-        market_data_type,
         Arc::clone(connection_state),
     ) {
         Ok(_) => {}
@@ -174,7 +175,7 @@ pub fn handle_subscription(
 }
 
 //TODO: change error to something more specific
-pub fn transform_message(message: Message) -> Result<Message, String> {
+pub fn transform_message(message: Message, subscription: &Subscription) -> Result<Message, String> {
     //parse message into LegacyCbboUpdate
     let mut parsed_message: CbagSnapshotUpdate = match serde_json::from_str(&message.to_string()) {
         Ok(msg) => msg,
@@ -200,18 +201,42 @@ pub fn transform_message(message: Message) -> Result<Message, String> {
             .collect();
     }
 
-    let client_snapshot_update = ClientSnapshotUpdate {
-        bids: parsed_message.bid,
-        asks: parsed_message.ask,
-    };
+    match subscription {
+        Subscription::Snapshot(sub) => {
+            let generated_timestamp = chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.6f%:z")
+                .to_string();
 
-    let transformed_message = match serde_json::to_string(&client_snapshot_update) {
-        Ok(msg) => Message::Text(msg),
-        Err(e) => {
-            tracing::error!("Error serializing message: {}", e);
-            return Err(format!("Error serializing message: {}", e));
+            let markets: Vec<String> = sub
+                .cbag_markets
+                .iter()
+                .map(|market| cbag_market_to_exchange(market))
+                .collect();
+
+            let client_snapshot_update = ClientSnapshotUpdate {
+                bids: parsed_message.bid,
+                asks: parsed_message.ask,
+                generated_timestamp,
+                depth_limit: sub.depth_limit,
+                product: sub.currency_pair.clone(),
+                markets: markets,
+            };
+
+            let transformed_message = match serde_json::to_string(&client_snapshot_update) {
+                Ok(msg) => Message::Text(msg),
+                Err(e) => {
+                    tracing::error!("Error serializing message: {}", e);
+                    return Err(format!("Error serializing message: {}", e));
+                }
+            };
+
+            Ok(transformed_message)
         }
-    };
-
-    Ok(transformed_message)
+        _ => {
+            tracing::error!("Internal Error: Subscription type not supported for MarketDepthV1");
+            Err(String::from(
+                "Internal Error: Subscription type not supported for MarketDepthV1",
+            ))
+        }
+    }
 }

@@ -36,6 +36,7 @@ use crate::auth::check_token_and_authenticate;
 use crate::md_handlers::{cbbo_v1, market_depth_v1};
 use crate::routes_config::{MarketDataType, SubscriptionType, ROUTES, SUB_TYPE};
 use crate::state::ConnectionState;
+use crate::subscriptions::{DirectStruct, Subscription};
 
 pub type Tx = Sender<axum::extract::ws::Message>;
 
@@ -204,12 +205,16 @@ async fn axum_handle_socket(
     // if its a direct subscription we can add it straight away
     // else we will wait for the client to send us subscription messages
     if matches!(subscription_type, SubscriptionType::Direct) {
+        let subscription = Subscription::Direct(DirectStruct::new(
+            market_data_type.clone(),
+            request_endpoint_str.clone(),
+        ));
+
         match connection_state.add_client_to_subscription(
             &client_address,
-            &request_endpoint_str,
+            subscription,
             uris.cbag_uri,
             tx.clone(),
-            market_data_type.clone(),
             Arc::clone(&connection_state),
         ) {
             Ok(_) => {}
