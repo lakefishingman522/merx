@@ -215,7 +215,7 @@ impl Users {
         &self,
         username: &str,
         exchanges_vec: &Vec<String>,
-    ) -> Result<String, MerxErrorResponse> {
+    ) -> Result<Vec<String>, MerxErrorResponse> {
         let user = self.users.get(username);
         match user {
             Some(user) => {
@@ -233,7 +233,7 @@ impl Users {
                         ));
                     }
                 }
-                Ok(cbag_markets.join(","))
+                Ok(cbag_markets)
             }
             None => {
                 error!(
