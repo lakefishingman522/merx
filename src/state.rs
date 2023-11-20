@@ -320,8 +320,6 @@ pub fn subscribe_to_market_data(
 ) -> JoinHandle<()> {
     let ws_endpoint = subscription.get_url();
     info!("Starting a new subscription to {}", ws_endpoint);
-    //TODO: add this as a parameter
-    let ws_endpoint = ws_endpoint.to_owned();
     let full_url = format!("ws://{}{}", cbag_uri, ws_endpoint);
 
     tokio::spawn(async move {

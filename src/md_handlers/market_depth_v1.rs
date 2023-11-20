@@ -219,7 +219,7 @@ pub fn transform_message(message: Message, subscription: &Subscription) -> Resul
                 generated_timestamp,
                 depth_limit: sub.depth_limit,
                 product: sub.currency_pair.clone(),
-                markets: markets,
+                markets,
             };
 
             let transformed_message = match serde_json::to_string(&client_snapshot_update) {

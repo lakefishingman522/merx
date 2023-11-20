@@ -206,7 +206,7 @@ async fn axum_handle_socket(
     // else we will wait for the client to send us subscription messages
     if matches!(subscription_type, SubscriptionType::Direct) {
         let subscription = Subscription::Direct(DirectStruct::new(
-            market_data_type.clone(),
+            *market_data_type,
             request_endpoint_str.clone(),
         ));
 
@@ -310,7 +310,7 @@ async fn axum_handle_socket(
                                 msg_str,
                                 recv_task_cbag_uri.clone(),
                                 recv_task_tx.clone(),
-                                market_data_type.clone(),
+                                *market_data_type,
                                 &username.clone(),
                             );
                         }
@@ -321,7 +321,7 @@ async fn axum_handle_socket(
                                 msg_str,
                                 recv_task_cbag_depth_uri.clone(),
                                 recv_task_tx.clone(),
-                                market_data_type.clone(),
+                                *market_data_type,
                                 &username.clone(),
                             );
                         }

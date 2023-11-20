@@ -72,8 +72,8 @@ impl SubTraits for SnapshotStruct {
     fn get_url(&self) -> String {
         let mut markets_string: String = String::new();
         for market in &self.cbag_markets {
-            markets_string.push_str(&&market);
-            markets_string.push_str(",");
+            markets_string.push_str(market);
+            markets_string.push(',');
         }
 
         format!(

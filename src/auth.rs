@@ -356,13 +356,13 @@ pub async fn get_and_cache_currency_pairs_v2(
     match connection_state.add_or_update_symbols(symbols, full_response_string) {
         Ok(_) => {
             info!("Added symbols to connection state");
-            return Ok(());
+            Ok(())
         }
         Err(e) => {
             error!("Unable to add symbols to connection state: {:?}", e);
-            return Err("Unable to add symbols to connection state".to_string());
+            Err("Unable to add symbols to connection state".to_string())
         }
-    };
+    }
 }
 
 pub async fn get_symbols(
