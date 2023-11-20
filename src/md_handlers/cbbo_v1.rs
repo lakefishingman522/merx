@@ -1,5 +1,6 @@
 use crate::error::{ErrorCode, MerxErrorResponse};
 use crate::md_handlers::helper::cbag_market_to_exchange;
+use crate::subscriptions::{LegacyCbboStruct, Subscription};
 use crate::{routes_config::MarketDataType, state::ConnectionState};
 // use futures_channel::mpsc::Sender;
 use core::f64;
@@ -197,27 +198,19 @@ pub fn handle_subscription(
         }
     };
 
-    // let ws_endpoint: String = format!(
-    //     "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&source={}&user={}",
-    //     parsed_sub_msg.currency_pair,
-    //     parsed_sub_msg.size_filter,
-    //     1000,
-    //     "merx",
-    //     all_cbag_markets,
-    //     "merx"
-    // );
-
-    let ws_endpoint: String = format!(
-        "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&user={}",
-        parsed_sub_msg.currency_pair, parsed_sub_msg.size_filter, interval_ms, client_id, "merx"
-    );
+    let subscription = Subscription::LegacyCbbo(LegacyCbboStruct::new(
+        market_data_type,
+        parsed_sub_msg.currency_pair,
+        parsed_sub_msg.size_filter,
+        interval_ms,
+        client_id,
+    ));
 
     match connection_state.add_client_to_subscription(
         client_address,
-        &ws_endpoint,
+        subscription,
         cbag_uri,
         sender.clone(),
-        market_data_type,
         Arc::clone(connection_state),
     ) {
         Ok(_) => {}

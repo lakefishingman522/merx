@@ -44,7 +44,7 @@ pub async fn check_token_and_authenticate(
         return Err("Invalid token".to_string());
     }
     // we check if the token is already validated within the last 5 minutes
-    if let Some(username) = connection_state.check_user_in_state(token, Some(Duration::minutes(5)))
+    if let Some(username) = connection_state.check_user_in_state(token, Some(Duration::minutes(15)))
     {
         return Ok(username);
     }
@@ -356,13 +356,13 @@ pub async fn get_and_cache_currency_pairs_v2(
     match connection_state.add_or_update_symbols(symbols, full_response_string) {
         Ok(_) => {
             info!("Added symbols to connection state");
-            return Ok(());
+            Ok(())
         }
         Err(e) => {
             error!("Unable to add symbols to connection state: {:?}", e);
-            return Err("Unable to add symbols to connection state".to_string());
+            Err("Unable to add symbols to connection state".to_string())
         }
-    };
+    }
 }
 
 pub async fn get_symbols(

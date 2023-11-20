@@ -2,10 +2,7 @@ use crate::{auth::get_and_cache_currency_pairs_v2, cached_routes::CACHED_ENDPOIN
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 
-use crate::{
-    auth::get_data_from_auth_server,
-    state::ConnectionState,
-};
+use crate::{auth::get_data_from_auth_server, state::ConnectionState};
 use tracing::{error, info, warn};
 
 pub async fn start_pull_symbols_task(
