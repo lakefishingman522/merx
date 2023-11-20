@@ -44,7 +44,7 @@ pub async fn check_token_and_authenticate(
         return Err("Invalid token".to_string());
     }
     // we check if the token is already validated within the last 5 minutes
-    if let Some(username) = connection_state.check_user_in_state(token, Some(Duration::minutes(5)))
+    if let Some(username) = connection_state.check_user_in_state(token, Some(Duration::minutes(15)))
     {
         return Ok(username);
     }
