@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     net::SocketAddr,
     sync::{Arc, RwLock},
+    time::Instant,
 };
 use tokio::task::JoinHandle;
 
@@ -67,29 +68,34 @@ impl ConnectionStateStruct {
         sender: Tx,
         connection_state: ConnectionState,
     ) -> Result<(), MerxErrorResponse> {
-        let mut subscription_state = self.subscription_state.write().unwrap();
-        let mut subscription_count = self.subscription_count.write().unwrap();
+        let now = Instant::now();
+        let already_subscribed: bool;
+        {
+            let mut subscription_state = self.subscription_state.write().unwrap();
+            let mut subscription_count = self.subscription_count.write().unwrap();
 
-        let already_subscribed = subscription_state.contains_key(&subscription);
+            already_subscribed = subscription_state.contains_key(&subscription);
 
-        if let Some(subscription_clients) = subscription_state.get_mut(&subscription) {
-            if subscription_clients.contains_key(client_address) {
-                return Err(MerxErrorResponse::new(ErrorCode::AlreadySubscribed));
+            if let Some(subscription_clients) = subscription_state.get_mut(&subscription) {
+                if subscription_clients.contains_key(client_address) {
+                    return Err(MerxErrorResponse::new(ErrorCode::AlreadySubscribed));
+                }
+                subscription_clients.insert(*client_address, sender);
+            } else {
+                let mut new_subscription_clients = HashMap::new();
+                new_subscription_clients.insert(*client_address, sender);
+                subscription_state.insert(subscription.clone(), new_subscription_clients);
             }
-            subscription_clients.insert(*client_address, sender);
-        } else {
-            let mut new_subscription_clients = HashMap::new();
-            new_subscription_clients.insert(*client_address, sender);
-            subscription_state.insert(subscription.clone(), new_subscription_clients);
-        }
 
-        // increment subscription count
-        if let Some(count) = subscription_count.get_mut(client_address) {
-            *count += 1;
-        } else {
-            subscription_count.insert(*client_address, 1);
+            // increment subscription count
+            if let Some(count) = subscription_count.get_mut(client_address) {
+                *count += 1;
+            } else {
+                subscription_count.insert(*client_address, 1);
+            }
         }
-
+        let elapsed = now.elapsed();
+        info!("Adding client to subscription took {:?}", elapsed);
         if !already_subscribed {
             let _handle = subscribe_to_market_data(subscription, connection_state, cbag_uri);
         }
