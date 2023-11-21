@@ -242,7 +242,7 @@ pub async fn get_currency_pairs_v2(
     let start_time = std::time::Instant::now();
     while still_paginating {
         let mut url_builder =
-            match reqwest::Url::parse(&format!("https://{}/api/currency_pairs_v2", auth_uri)) {
+            match reqwest::Url::parse(&format!("http://{}/api/currency_pairs_v2", auth_uri)) {
                 Ok(url_builder) => url_builder,
                 Err(e) => {
                     println!("error: {:?}", e);
