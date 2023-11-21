@@ -199,6 +199,11 @@ pub fn handle_subscription(
         }
     };
 
+    let mut client_id = match market_data_id {
+        Some(id) =>  client_id.to_string() + ":" + id.as_str(),
+        None => client_id
+    };
+
     let subscription = Subscription::LegacyCbbo(LegacyCbboStruct::new(
         market_data_type,
         parsed_sub_msg.currency_pair,
@@ -217,14 +222,6 @@ pub fn handle_subscription(
     //     "merx"
     // );
 
-    let mut client_id = match market_data_id {
-        Some(id) =>  client_id.to_string() + ":" + id.as_str(),
-        None => client_id
-    };
-    let ws_endpoint: String = format!(
-        "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&user={}",
-        parsed_sub_msg.currency_pair, parsed_sub_msg.size_filter, interval_ms, client_id, "merx"
-    );
 
     match connection_state.add_client_to_subscription(
         client_address,
