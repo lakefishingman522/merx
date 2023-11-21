@@ -1,5 +1,6 @@
 use crate::error::{ErrorCode, MerxErrorResponse};
 use crate::md_handlers::helper::cbag_market_to_exchange;
+use crate::subscriptions::{LegacyCbboStruct, Subscription};
 use crate::{routes_config::MarketDataType, state::ConnectionState};
 // use futures_channel::mpsc::Sender;
 use core::f64;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 use std::{collections::HashMap, net::SocketAddr};
 use tokio::sync::mpsc::Sender;
 use tokio_tungstenite::tungstenite::Message;
+use tracing::info;
 
 pub type Tx = Sender<axum::extract::ws::Message>;
 
@@ -16,7 +18,7 @@ pub type Tx = Sender<axum::extract::ws::Message>;
 struct SubscriptionMessage {
     currency_pair: String,
     size_filter: String,
-    sample: Option<String>,
+    // sample: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -61,6 +63,7 @@ pub fn handle_subscription(
     username: &str,
     market_data_id: Option<String>
 ) {
+    info!("Received subscription message: {}", subscription_msg);
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
         Ok(msg) => msg,
         Err(e) => {
@@ -130,46 +133,28 @@ pub fn handle_subscription(
         {};
     }
 
-    let interval_ms: u32 = match parsed_sub_msg.sample {
-        Some(sample) => match sample.parse::<f64>() {
-            Ok(sample_seconds) => {
-                // check sample is between 0.1 and 60
-                if !(0.1..=60.0).contains(&sample_seconds) {
-                    match sender.try_send(axum::extract::ws::Message::Text(
-                        MerxErrorResponse::new_and_override_error_text(
-                            ErrorCode::InvalidSample,
-                            "Sample must be between 0.1 and 60.0",
-                        )
-                        .to_json_str(),
-                    )) {
-                        Ok(_) => {}
-                        Err(_try_send_error) => {
-                            // warn!("Buffer probably full.");
-                        }
-                    };
-                    return;
-                }
-                (sample_seconds * 1000.0).round() as u32
-            }
-            Err(e) => {
-                match sender.try_send(axum::extract::ws::Message::Text(
-                    MerxErrorResponse::new_and_override_error_text(
-                        ErrorCode::InvalidSample,
-                        "Sample must be a number",
-                    )
-                    .to_json_str(),
-                )) {
-                    Ok(_) => {}
-                    Err(_try_send_error) => {
-                        // warn!("Buffer probably full.");
-                    }
-                };
-                tracing::error!("Error parsing sample: {}", e);
-                return;
-            }
-        },
-        None => 500,
-    };
+    let interval_ms = 500;
+    // let interval_ms: u32 = match parsed_sub_msg.sample {
+    //     Some(sample) => {
+    //         if !(0.1..=60.0).contains(&sample) {
+    //             match sender.try_send(axum::extract::ws::Message::Text(
+    //                 MerxErrorResponse::new_and_override_error_text(
+    //                     ErrorCode::InvalidSample,
+    //                     "Sample must be between 0.1 and 60.0",
+    //                 )
+    //                 .to_json_str(),
+    //             )) {
+    //                 Ok(_) => {}
+    //                 Err(_try_send_error) => {
+    //                     // warn!("Buffer probably full.");
+    //                 }
+    //             };
+    //             return;
+    //         }
+    //         (sample * 1000.0).round() as u32
+    //     }
+    //     None => 500,
+    // };
 
     //validate the size filter is valid
     match connection_state.is_size_filter_valid(&parsed_sub_msg.currency_pair, parsed_size_filter) {
@@ -214,6 +199,14 @@ pub fn handle_subscription(
         }
     };
 
+    let subscription = Subscription::LegacyCbbo(LegacyCbboStruct::new(
+        market_data_type,
+        parsed_sub_msg.currency_pair,
+        parsed_sub_msg.size_filter,
+        interval_ms,
+        client_id,
+    ));
+
     // let ws_endpoint: String = format!(
     //     "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&source={}&user={}",
     //     parsed_sub_msg.currency_pair,
@@ -235,10 +228,9 @@ pub fn handle_subscription(
 
     match connection_state.add_client_to_subscription(
         client_address,
-        &ws_endpoint,
+        subscription,
         cbag_uri,
         sender.clone(),
-        market_data_type,
         Arc::clone(connection_state),
     ) {
         Ok(_) => {}

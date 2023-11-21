@@ -1,13 +1,13 @@
 use axum::{extract::Query, http::HeaderMap};
 use chrono::Duration;
 use reqwest::Client;
-use std::collections::HashMap;
+use std::{collections::HashMap, u8};
 
 // import UserResponse struct
 use crate::{
     error::ErrorCode,
     state::ConnectionState,
-    symbols::{CurrencyPairsResponse, Symbols},
+    symbols::{CurrencyPairsResponse, CurrencyPairsV2, Symbols},
     user::UserResponse,
 };
 
@@ -44,7 +44,7 @@ pub async fn check_token_and_authenticate(
         return Err("Invalid token".to_string());
     }
     // we check if the token is already validated within the last 5 minutes
-    if let Some(username) = connection_state.check_user_in_state(token, Some(Duration::minutes(5)))
+    if let Some(username) = connection_state.check_user_in_state(token, Some(Duration::minutes(15)))
     {
         return Ok(username);
     }
@@ -225,6 +225,143 @@ pub async fn get_data_from_auth_server(
             Ok(json_string)
         }
         Err(e) => Err(format!("Unable to get {}: {:?}", endpoint, e)),
+    }
+}
+
+pub async fn get_currency_pairs_v2(
+    auth_uri: &str,
+    token: &str,
+) -> Result<Vec<CurrencyPairsResponse>, String> {
+    let client = Client::new();
+
+    let mut still_paginating = true;
+    let mut page_number: u8 = 1;
+
+    // print the address
+    let mut currency_pairs_vec: Vec<CurrencyPairsResponse> = Vec::new();
+    let start_time = std::time::Instant::now();
+    while still_paginating {
+        let mut url_builder =
+            match reqwest::Url::parse(&format!("https://{}/api/currency_pairs_v2", auth_uri)) {
+                Ok(url_builder) => url_builder,
+                Err(e) => {
+                    println!("error: {:?}", e);
+                    return Err("Error getting currency pairsV2 from auth server".to_string());
+                }
+            };
+        url_builder
+            .query_pairs_mut()
+            .append_pair("page", page_number.to_string().as_str());
+
+        let res = client
+            .get(url_builder)
+            .header("Authorization", format!("Token {}", token))
+            .header(reqwest::header::USER_AGENT, "merx")
+            .send()
+            .await;
+
+        match res {
+            Ok(res) => {
+                // check the response code
+                if res.status() != reqwest::StatusCode::OK {
+                    return Err(format!("Unable to get currency pairs: {}", res.status()));
+                }
+
+                let json_string = match res.text().await {
+                    Ok(json_string) => json_string,
+                    Err(e) => {
+                        error!("Unable to get currency pairs: {:?}", e);
+                        return Err("Unable to get currency pairs".to_string());
+                    }
+                };
+
+                // parse into a vector of currencyPairsResponse
+                let currency_pairs_v2_page: Result<CurrencyPairsV2, _> =
+                    serde_json::from_str(json_string.as_str());
+                match currency_pairs_v2_page {
+                    Ok(currency_pairs_v2_response) => {
+                        for currency_pair in currency_pairs_v2_response.results {
+                            currency_pairs_vec.push(currency_pair);
+                        }
+
+                        // print the size of currency pairs vec
+                        info!(
+                            "Paginating currency pairs v2. Got {} symbols",
+                            currency_pairs_vec.len()
+                        );
+
+                        // info!("Got response from auth server: {:?}", currency_pairs_v2_response);
+
+                        match currency_pairs_v2_response.next {
+                            Some(_next_page) => {
+                                page_number += 1;
+                            }
+                            None => {
+                                still_paginating = false;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("error: {:?}", e);
+                        return Err("Unable to parse currency pairs response".to_string());
+                    }
+                }
+            }
+            Err(e) => {
+                println!("error: {:?}", e);
+                return Err("Error getting currency pairsV2 from auth server".to_string());
+            }
+        }
+    }
+    info!("Got all currency_pairs_v2 in {:?}", start_time.elapsed());
+    Ok(currency_pairs_vec)
+}
+
+pub async fn get_and_cache_currency_pairs_v2(
+    auth_uri: &str,
+    token: &str,
+    connection_state: ConnectionState,
+) -> Result<(), String> {
+    let currency_pairs = match get_currency_pairs_v2(auth_uri, token).await {
+        Ok(currency_pairs) => currency_pairs,
+        Err(e) => {
+            println!("error: {:?}", e);
+            return Err("Error getting currency pairsV2 from auth server".to_string());
+        }
+    };
+
+    let symbols = match parse_currency_pairs_response(&currency_pairs) {
+        Ok(symbols) => symbols,
+        Err(e) => {
+            println!("error: {:?}", e);
+            return Err("Error parsing currency pairsV2 from auth server".to_string());
+        }
+    };
+
+    let full_currency_pairs_v2_response = CurrencyPairsV2 {
+        count: currency_pairs.len() as i32,
+        next: None,
+        previous: None,
+        results: currency_pairs,
+    };
+
+    let full_response_string = match serde_json::to_string(&full_currency_pairs_v2_response) {
+        Ok(full_response_string) => full_response_string,
+        Err(e) => {
+            println!("error: {:?}", e);
+            return Err("Error serializing currency pairsV2 from auth server".to_string());
+        }
+    };
+
+    match connection_state.add_or_update_symbols(symbols, full_response_string) {
+        Ok(_) => {
+            info!("Added symbols to connection state");
+            Ok(())
+        }
+        Err(e) => {
+            error!("Unable to add symbols to connection state: {:?}", e);
+            Err("Unable to add symbols to connection state".to_string())
+        }
     }
 }
 

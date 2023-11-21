@@ -1,6 +1,6 @@
 use phf::phf_map;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
 pub enum MarketDataType {
     CbboV1,
     MarketDepthV1,

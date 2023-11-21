@@ -129,5 +129,3 @@ impl ErrorCode {
         }
     }
 }
-
-//generate a markdown table of error name, error code, and description
