@@ -367,10 +367,12 @@ async fn axum_handle_socket(
         _ = receive_from_others => {
             info!("receive_from_others ended");
         },
-        _ = check_subscription_still_active => {info!("check_subscription_still_active ended");},
+        _ = check_subscription_still_active => {
+            //info!("check_subscription_still_active ended");
+        },
     }
 
-    info!("{} {} disconnected", &client_address, username);
+    // info!("{} {} disconnected", &client_address, username);
 
     connection_state.remove_client_from_state(&client_address);
 
