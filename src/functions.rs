@@ -144,6 +144,7 @@ pub async fn axum_ws_handler(
             &Query(params.clone()),
             &auth_uri,
             connection_state.clone(),
+            &uris.http_scheme.clone(),
         )
         .await
         {
@@ -399,6 +400,7 @@ pub async fn get_state(
         &Query(params),
         &uris.auth_uri,
         connection_state.clone(),
+        &uris.http_scheme.clone(),
     )
     .await
     {
@@ -429,6 +431,7 @@ pub async fn authenticate_user(
         &Query(params),
         &uris.auth_uri,
         connection_state.clone(),
+        &uris.http_scheme,
     )
     .await
     {
@@ -456,6 +459,7 @@ pub async fn get_cached_response(
         &Query(params),
         &uris.auth_uri,
         connection_state.clone(),
+        &uris.http_scheme.clone(),
     )
     .await
     {

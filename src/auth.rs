@@ -19,6 +19,7 @@ pub async fn check_token_and_authenticate(
     Query(params): &Query<HashMap<String, String>>,
     auth_uri: &str,
     connection_state: ConnectionState,
+    http_scheme: &str,
 ) -> Result<String, String> {
     let token = if let Some(token) = headers.get("Authorization") {
         let token = if let Ok(tok) = token.to_str() {
@@ -49,7 +50,7 @@ pub async fn check_token_and_authenticate(
         return Ok(username);
     }
 
-    match authenticate_token(auth_uri, token, connection_state.clone()).await {
+    match authenticate_token(auth_uri, token, connection_state.clone(), http_scheme).await {
         Ok(user) => Ok(user),
         Err(error_code) => {
             match error_code {
@@ -77,6 +78,7 @@ pub async fn authenticate_token(
     auth_uri: &str,
     token: &str,
     connection_state: ConnectionState,
+    http_scheme: &str,
 ) -> Result<String, ErrorCode> {
     // first we check that no other thread is currently trying to authenticate
     // if so we can wait instead of spamming auth server with simultanious requests
@@ -102,7 +104,7 @@ pub async fn authenticate_token(
 
     connection_state.add_attempted_auth(token);
     let client = Client::new();
-    let auth_address = format!("http://{}/api/user/", auth_uri);
+    let auth_address = format!("{}://{}/api/user/", http_scheme, auth_uri);
 
     let mut attempts: u8 = 0;
     let max_attempts = 4;
@@ -197,9 +199,10 @@ pub async fn get_data_from_auth_server(
     auth_uri: &str,
     token: &str,
     endpoint: &str,
+    http_scheme: &str,
 ) -> Result<String, String> {
     let client = Client::new();
-    let auth_address = format!("http://{}{}", auth_uri, endpoint);
+    let auth_address = format!("{}://{}{}", http_scheme, auth_uri, endpoint);
 
     let res = client
         .get(auth_address.clone())
@@ -231,6 +234,7 @@ pub async fn get_data_from_auth_server(
 pub async fn get_currency_pairs_v2(
     auth_uri: &str,
     token: &str,
+    http_scheme: &str,
 ) -> Result<Vec<CurrencyPairsResponse>, String> {
     let client = Client::new();
 
@@ -242,7 +246,7 @@ pub async fn get_currency_pairs_v2(
     let start_time = std::time::Instant::now();
     while still_paginating {
         let mut url_builder =
-            match reqwest::Url::parse(&format!("http://{}/api/currency_pairs_v2", auth_uri)) {
+            match reqwest::Url::parse(&format!("{}://{}/api/currency_pairs_v2", http_scheme, auth_uri)) {
                 Ok(url_builder) => url_builder,
                 Err(e) => {
                     println!("error: {:?}", e);
@@ -321,8 +325,9 @@ pub async fn get_and_cache_currency_pairs_v2(
     auth_uri: &str,
     token: &str,
     connection_state: ConnectionState,
+    http_scheme: &str,
 ) -> Result<(), String> {
-    let currency_pairs = match get_currency_pairs_v2(auth_uri, token).await {
+    let currency_pairs = match get_currency_pairs_v2(auth_uri, token, http_scheme).await {
         Ok(currency_pairs) => currency_pairs,
         Err(e) => {
             println!("error: {:?}", e);
@@ -369,11 +374,12 @@ pub async fn get_symbols(
     auth_uri: &str,
     token: &str,
     connection_state: ConnectionState,
+    http_scheme: &str,
 ) -> Result<(), String> {
     let client = Client::new();
 
     //TODO: can be refactored to use the get_data_from_auth_server function
-    let currency_pairs_address = format!("http://{}/api/currency_pairs/", auth_uri);
+    let currency_pairs_address = format!("{}://{}/api/currency_pairs/", http_scheme, auth_uri);
 
     let res = client
         .get(currency_pairs_address)

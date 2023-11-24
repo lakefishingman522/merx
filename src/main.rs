@@ -56,7 +56,7 @@ struct Args {
     prod: bool,
 
     /// optional: specify http scheme for rest requests. https by default
-    #[argh(option, default = "https")]
+    #[argh(option, default = "String::from(\"https\")")]
     http_scheme: String,
 }
 
@@ -117,7 +117,7 @@ async fn main() {
 
     //start the pull symbols task•
     let _pull_symbols_task =
-        start_pull_symbols_task(connection_state.clone(), uris.auth_uri.clone(), args.token).await;
+        start_pull_symbols_task(connection_state.clone(), uris.auth_uri.clone(), args.token, args.http_scheme).await;
 
     // build our application with a route
     let app = Router::new()

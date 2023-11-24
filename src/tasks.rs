@@ -9,12 +9,13 @@ pub async fn start_pull_symbols_task(
     connection_state: ConnectionState,
     auth_uri: String,
     token: String,
+    http_scheme: String,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         info!("Starting the pull symbols task");
         loop {
             // for api/currency_pairs
-            match get_and_cache_currency_pairs_v2(&auth_uri, &token, connection_state.clone()).await
+            match get_and_cache_currency_pairs_v2(&auth_uri, &token, connection_state.clone(), &http_scheme).await
             {
                 Ok(symbols) => symbols,
                 Err(e) => {
@@ -27,7 +28,7 @@ pub async fn start_pull_symbols_task(
             // for all other cached endpoints
             for endpoint in CACHED_ENDPOINTS.iter() {
                 tokio::time::sleep(Duration::from_secs(5)).await;
-                match get_data_from_auth_server(&auth_uri, &token, endpoint).await {
+                match get_data_from_auth_server(&auth_uri, &token, endpoint, &http_scheme).await {
                     Ok(response) => {
                         connection_state.add_or_update_cached_response(endpoint, response);
                         info!("Updated cached response for endpoint {}", endpoint)
