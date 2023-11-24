@@ -85,11 +85,7 @@ async fn main() {
         panic!("token is required")
     }
     let uris = URIs {
-        http_scheme: if args.http_scheme == "none" {
-            String::from("https")
-        } else {
-            args.http_scheme.clone()
-        },
+        http_scheme:  args.http_scheme.clone(),
         cbag_uri: args.cbag_uri.clone(),
         auth_uri: args.auth_uri.clone(),
         cbag_depth_uri: if args.cbag_depth_uri == "none" {
