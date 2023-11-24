@@ -212,17 +212,6 @@ pub fn handle_subscription(
         client_id,
     ));
 
-    // let ws_endpoint: String = format!(
-    //     "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&source={}&user={}",
-    //     parsed_sub_msg.currency_pair,
-    //     parsed_sub_msg.size_filter,
-    //     1000,
-    //     "merx",
-    //     all_cbag_markets,
-    //     "merx"
-    // );
-
-
     match connection_state.add_client_to_subscription(
         client_address,
         subscription,

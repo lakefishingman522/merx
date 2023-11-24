@@ -157,7 +157,6 @@ pub async fn axum_ws_handler(
     };
 
     let market_data_id = params.get("market_data_id").cloned();
-
     // we can customize the callback by sending additional info such as original_uri.
     ws.on_upgrade(move |socket| {
         axum_handle_socket(
