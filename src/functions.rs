@@ -47,6 +47,7 @@ lazy_static! {
 
 #[derive(Clone)]
 pub struct URIs {
+    pub http_scheme: String,
     pub cbag_uri: String,
     pub cbag_depth_uri: String,
     pub auth_uri: String,

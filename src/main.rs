@@ -54,6 +54,10 @@ struct Args {
     /// optional: if you want to run mercx in production mode. Will serve on 0.0.0.0
     #[argh(switch)]
     prod: bool,
+
+    /// optional: specify http scheme for rest requests. https by default
+    #[argh(option, default = "https")]
+    http_scheme: String,
 }
 
 #[tokio::main]
@@ -81,6 +85,11 @@ async fn main() {
         panic!("token is required")
     }
     let uris = URIs {
+        http_scheme: if args.http_scheme == "none" {
+            String::from("https")
+        } else {
+            args.http_scheme.clone()
+        },
         cbag_uri: args.cbag_uri.clone(),
         auth_uri: args.auth_uri.clone(),
         cbag_depth_uri: if args.cbag_depth_uri == "none" {
