@@ -60,10 +60,11 @@ pub async fn fallback(uri: Uri, OriginalUri(original_uri): OriginalUri) -> (Stat
 
 pub async fn forward_request(
     OriginalUri(original_uri): OriginalUri,
-    Extension(cbag_uri): Extension<String>,
+    Extension(uris): Extension<URIs>,
 ) -> impl IntoResponse {
     info!("Received REST Forward Request {}", original_uri);
-    let target_url = format!("http://{}{}", cbag_uri, original_uri);
+    let cbag_uri = uris.cbag_uri.clone();
+    let target_url = format!("{}://{}{}", uris.http_scheme, cbag_uri, original_uri);
 
     // Make a GET request to the target server
     let client = Client::new();
