@@ -61,6 +61,11 @@ async fn main() {
     // Configure the tracing subscriber
     let filter = EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into());
     tracing_subscriber::fmt::Subscriber::builder()
+        .compact()
+        .with_file(true)
+        .with_line_number(true)
+        .with_thread_ids(true)
+        .with_target(false)
         .with_env_filter(filter)
         .init();
 

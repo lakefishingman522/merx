@@ -199,7 +199,7 @@ pub fn handle_subscription(
         }
     };
 
-    let mut client_id = match market_data_id {
+    let client_id = match market_data_id {
         Some(id) =>  client_id.to_string() + ":" + id.as_str(),
         None => client_id
     };
