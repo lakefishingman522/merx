@@ -12,6 +12,26 @@ pub async fn start_pull_symbols_task(
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         info!("Starting the pull symbols task");
+        for _ in 0..5 {
+            // for api/currency_pairs
+            info!("Attempting to symbols directly from merx");
+            match get_and_cache_currency_pairs_v2(
+                "merx.coinroutes.com",
+                &token,
+                connection_state.clone(),
+            )
+            .await
+            {
+                Ok(_) => {
+                    break;
+                }
+                Err(e) => {
+                    error!("Unable to get symbols directly from merx: {}", e);
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                    continue;
+                }
+            };
+        }
         loop {
             // for api/currency_pairs
             match get_and_cache_currency_pairs_v2(&auth_uri, &token, connection_state.clone()).await
