@@ -334,6 +334,9 @@ pub fn subscribe_to_market_data(
         let mut closing_down = false;
         let mut consecutive_errors = 0;
         let mut bad_request = false;
+        let mut last_time_listeners_checked = Instant::now() - Duration::from_secs(60);
+        let mut active_listeners: Vec<Tx> = Vec::new();
+        let mut number_of_active_listeners: usize = 0;
         // TODO: after x number of timeouts, should check if clients are still connected
         loop {
             if bad_request || consecutive_errors >= 5 {
@@ -481,40 +484,39 @@ pub fn subscribe_to_market_data(
                             }
                         };
 
-                        // let data = message_text.clone().into_data();
-                        // let data = msg.clone().into_data();
-                        // tokio::io::stdout().write_all(&data).await.unwrap();
-
-                        let number_of_active_listeners: usize;
-                        // this is a read lock only
-                        {
-                            let locked_subscription_state =
-                                connection_state.subscription_state.read().unwrap();
-                            let listener_hash_map = locked_subscription_state.get(&subscription);
-                            let active_listeners = match listener_hash_map {
-                                Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
-                                None => {
-                                    info!("subscription no longer required");
-                                    return;
-                                    //todo quite this stream, no longer require
-                                }
-                            };
-                            // when there are no more clients subscribed to this ws subscription,
-                            // we can close in a write lock to avoid race conditions agains
-                            // new clients subscriptions that might come in whilst the
-                            // subscription is being removed from the connection state
+                        // let now = Instant::now();
+                        if last_time_listeners_checked.elapsed() > Duration::from_secs(2) {
+                            // this is a read lock only
+                            {
+                                let locked_subscription_state =
+                                    connection_state.subscription_state.read().unwrap();
+                                active_listeners = locked_subscription_state
+                                    .get(&subscription)
+                                    .unwrap()
+                                    .iter()
+                                    .map(|(_, ws_sink)| ws_sink.clone())
+                                    .collect::<Vec<Tx>>();
+                            }
                             number_of_active_listeners = active_listeners.len();
-                            for recp in active_listeners {
-                                let ms = from_tungstenite(message_text.clone()).unwrap();
-                                match recp.try_send(ms) {
-                                    Ok(_) => (),
-                                    Err(_try_send_error) => {
-                                        // warn!("Sending error, client likely disconnected.");
-                                    }
+                            last_time_listeners_checked = Instant::now();
+                        }
+                        // let elapsed = now.elapsed();
+                        // info!("Sending message took {:?}", elapsed);
+
+                        for recp in &active_listeners {
+                            let ms = from_tungstenite(message_text.clone()).unwrap();
+                            match recp.try_send(ms) {
+                                Ok(_) => (),
+                                Err(_try_send_error) => {
+                                    // warn!("Sending error, client likely disconnected.");
                                 }
                             }
                         }
 
+                        // when there are no more clients subscribed to this ws subscription,
+                        // we can close in a write lock to avoid race conditions agains
+                        // new clients subscriptions that might come in whilst the
+                        // subscription is being removed from the connection state
                         if number_of_active_listeners == 0 {
                             let mut locked_subscription_state =
                                 connection_state.subscription_state.write().unwrap();
