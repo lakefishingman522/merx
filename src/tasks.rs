@@ -13,7 +13,9 @@ pub async fn start_pull_symbols_task(
     tokio::spawn(async move {
         info!("Starting the pull symbols task");
         for _ in 0..5 {
-            // for api/currency_pairs
+            // When merx starts up, try to pull currency pairs directly
+            // from merx prod as its much faster than portal and allows merx
+            // to start serving requests much quicker
             info!("Attempting to symbols directly from merx");
             match get_and_cache_currency_pairs_v2(
                 "merx.coinroutes.com",
