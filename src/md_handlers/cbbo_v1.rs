@@ -200,7 +200,7 @@ pub fn handle_subscription(
     };
 
     let client_id = match market_data_id {
-        Some(id) =>  client_id.to_string() + ":" + id.as_str(),
+        Some(id) =>  client_id.to_string() + "|" + id.as_str(),
         None => client_id
     };
 
