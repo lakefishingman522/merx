@@ -41,7 +41,19 @@ struct Exchange {
     non_aggregated_prices: bool,
     public: bool,
     customer_specific: bool,
-    cbag_market: String,
+}
+
+impl Exchange{
+    pub fn to_cbag_market(&self, client_id: &str, market_data_id: Option<String>) -> String {
+        exchange_to_cbag_market(
+            &self.slug,
+            client_id,
+            self.non_aggregated_prices,
+            self.customer_specific,
+            self.public,
+            market_data_id
+        )
+    }
 }
 
 #[allow(dead_code)]
@@ -51,7 +63,6 @@ pub struct User {
     organization: String,
     client_id: String,
     exchanges: HashMap<String, Exchange>,
-    all_cbag_markets: String,
     time_validated: DateTime<Utc>,
 }
 
@@ -70,13 +81,6 @@ impl Users {
     ) -> Result<String, String> {
         let mut exchanges = HashMap::new();
         for exchange_response in &user_response.exchanges {
-            let cbag_market = exchange_to_cbag_market(
-                &exchange_response.slug,
-                &user_response.client_id,
-                exchange_response.non_aggregated_prices,
-                exchange_response.customer_specific,
-                exchange_response.public,
-            );
 
             let exchange = Exchange {
                 slug: exchange_response.slug.clone(),
@@ -87,17 +91,11 @@ impl Users {
                 non_aggregated_prices: exchange_response.non_aggregated_prices,
                 public: exchange_response.public,
                 customer_specific: exchange_response.customer_specific,
-                cbag_market,
             };
 
             exchanges.insert(exchange.slug.clone(), exchange);
         }
 
-        let cbag_markets_string = exchanges
-            .iter()
-            .map(|(_, exchange)| exchange.cbag_market.clone())
-            .collect::<Vec<String>>()
-            .join(",");
         let user = User {
             username: user_response.username.clone(),
             token: token.to_string(),
@@ -105,7 +103,6 @@ impl Users {
             client_id: user_response.client_id.clone(),
             exchanges,
             time_validated: Utc::now(),
-            all_cbag_markets: cbag_markets_string,
         };
 
         let username = user.username.clone();
@@ -185,36 +182,11 @@ impl Users {
         }
     }
 
-    pub fn validate_exchanges_string(
-        &self,
-        username: &str,
-        exchanges_string: &str,
-    ) -> Result<String, String> {
-        let user = self.users.get(username);
-        match user {
-            Some(user) => {
-                let exchanges: Vec<&str> = exchanges_string.split(',').collect();
-                let mut cbag_markets = Vec::new();
-                for exchange in exchanges {
-                    if let Some(exchange) = user.exchanges.get(exchange) {
-                        cbag_markets.push(exchange.cbag_market.clone());
-                    } else {
-                        return Err(format!(
-                            "User {} does not have access to exchange {}",
-                            username, exchange
-                        ));
-                    }
-                }
-                Ok(cbag_markets.join(","))
-            }
-            None => Err(format!("User {} not found", username)),
-        }
-    }
-
     pub fn validate_exchanges_vector(
         &self,
         username: &str,
         exchanges_vec: &Vec<String>,
+        market_data_id: Option<String>,
     ) -> Result<Vec<String>, MerxErrorResponse> {
         let user = self.users.get(username);
         match user {
@@ -222,7 +194,7 @@ impl Users {
                 let mut cbag_markets = Vec::new();
                 for exchange in exchanges_vec {
                     if let Some(exchange) = user.exchanges.get(exchange) {
-                        cbag_markets.push(exchange.cbag_market.clone());
+                        cbag_markets.push(exchange.to_cbag_market(user.client_id.as_str(), market_data_id.clone()).clone());
                     } else {
                         return Err(MerxErrorResponse::new_and_override_error_text(
                             ErrorCode::InvalidExchanges,
@@ -245,13 +217,6 @@ impl Users {
         }
     }
 
-    pub fn get_all_cbag_markets_string(&self, username: &str) -> Result<String, String> {
-        let user = self.users.get(username);
-        match user {
-            Some(user) => Ok(user.all_cbag_markets.clone()),
-            None => Err(format!("User {} not found", username)),
-        }
-    }
 
     pub fn get_client_id(&self, username: &str) -> Result<String, String> {
         let user = self.users.get(username);

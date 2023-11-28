@@ -330,6 +330,7 @@ async fn axum_handle_socket(
                                 recv_task_tx.clone(),
                                 *market_data_type,
                                 &username.clone(),
+                                market_data_id.clone()
                             );
                         }
                         MarketDataType::RestCostCalculatorV1 => {

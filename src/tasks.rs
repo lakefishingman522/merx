@@ -22,6 +22,7 @@ pub async fn start_pull_symbols_task(
                 "merx.coinroutes.com",
                 &token,
                 connection_state.clone(),
+                &http_scheme,
             )
             .await
             {
