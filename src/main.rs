@@ -84,10 +84,10 @@ async fn main() {
     if args.token == "none" {
         panic!("token is required")
     }
+    let http_scheme = args.http_scheme.clone();
     let uris = URIs {
-        http_scheme:  args.http_scheme.clone(),
         cbag_uri: args.cbag_uri.clone(),
-        auth_uri: args.auth_uri.clone(),
+        auth_uri: format!("{}://{}", http_scheme, args.auth_uri.clone()),
         cbag_depth_uri: if args.cbag_depth_uri == "none" {
             args.cbag_uri.clone()
         } else {
@@ -113,7 +113,7 @@ async fn main() {
 
     //start the pull symbols task•
     let _pull_symbols_task =
-        start_pull_symbols_task(connection_state.clone(), uris.auth_uri.clone(), args.token, args.http_scheme).await;
+        start_pull_symbols_task(connection_state.clone(), uris.auth_uri.clone(), args.token).await;
 
     // build our application with a route
     let app = Router::new()

@@ -47,7 +47,6 @@ lazy_static! {
 
 #[derive(Clone)]
 pub struct URIs {
-    pub http_scheme: String,
     pub cbag_uri: String,
     pub cbag_depth_uri: String,
     pub auth_uri: String,
@@ -60,11 +59,10 @@ pub async fn fallback(uri: Uri, OriginalUri(original_uri): OriginalUri) -> (Stat
 
 pub async fn forward_request(
     OriginalUri(original_uri): OriginalUri,
-    Extension(uris): Extension<URIs>,
+    Extension(cbag_uri): Extension<String>,
 ) -> impl IntoResponse {
     info!("Received REST Forward Request {}", original_uri);
-    let cbag_uri = uris.cbag_uri.clone();
-    let target_url = format!("{}://{}{}", uris.http_scheme, cbag_uri, original_uri);
+    let target_url = format!("http://{}{}", cbag_uri, original_uri);
 
     // Make a GET request to the target server
     let client = Client::new();
@@ -145,7 +143,6 @@ pub async fn axum_ws_handler(
             &Query(params.clone()),
             &auth_uri,
             connection_state.clone(),
-            &uris.http_scheme.clone(),
         )
         .await
         {
@@ -402,7 +399,6 @@ pub async fn get_state(
         &Query(params),
         &uris.auth_uri,
         connection_state.clone(),
-        &uris.http_scheme.clone(),
     )
     .await
     {
@@ -433,7 +429,6 @@ pub async fn authenticate_user(
         &Query(params),
         &uris.auth_uri,
         connection_state.clone(),
-        &uris.http_scheme,
     )
     .await
     {
@@ -461,7 +456,6 @@ pub async fn get_cached_response(
         &Query(params),
         &uris.auth_uri,
         connection_state.clone(),
-        &uris.http_scheme.clone(),
     )
     .await
     {
