@@ -102,7 +102,7 @@ pub async fn authenticate_token(
 
     connection_state.add_attempted_auth(token);
     let client = Client::new();
-    let auth_address = format!("https://{}/api/user/", auth_uri);
+    let auth_address = format!("{}/api/user/", auth_uri);
 
     let mut attempts: u8 = 0;
     let max_attempts = 4;
@@ -199,7 +199,7 @@ pub async fn get_data_from_auth_server(
     endpoint: &str,
 ) -> Result<String, String> {
     let client = Client::new();
-    let auth_address = format!("https://{}{}", auth_uri, endpoint);
+    let auth_address = format!("{}{}", auth_uri, endpoint);
 
     let res = client
         .get(auth_address.clone())
@@ -242,7 +242,7 @@ pub async fn get_currency_pairs_v2(
     let start_time = std::time::Instant::now();
     while still_paginating {
         let mut url_builder =
-            match reqwest::Url::parse(&format!("https://{}/api/currency_pairs_v2", auth_uri)) {
+            match reqwest::Url::parse(&format!("{}/api/currency_pairs_v2", auth_uri)) {
                 Ok(url_builder) => url_builder,
                 Err(e) => {
                     println!("error: {:?}", e);
@@ -373,7 +373,7 @@ pub async fn get_symbols(
     let client = Client::new();
 
     //TODO: can be refactored to use the get_data_from_auth_server function
-    let currency_pairs_address = format!("https://{}/api/currency_pairs/", auth_uri);
+    let currency_pairs_address = format!("{}/api/currency_pairs/", auth_uri);
 
     let res = client
         .get(currency_pairs_address)

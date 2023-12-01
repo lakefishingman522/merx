@@ -26,6 +26,7 @@ pub fn exchange_to_cbag_market(
     non_agg_prices: bool,
     customer_specific: bool,
     _public: bool,
+    market_data_id: Option<String>,
 ) -> String {
     let mut exchange_str = match exchange.to_lowercase().as_str() {
         "gdax" => String::from("COINBASE"),
@@ -33,6 +34,10 @@ pub fn exchange_to_cbag_market(
         _ => exchange.to_uppercase(),
     };
     if customer_specific {
+        let client_id = match market_data_id {
+            Some(id) =>  client_id.to_string() + "_" + id.as_str(),
+            None => client_id.to_string()
+        };
         exchange_str = format!("{}-{}", client_id, exchange_str);
     }
     if non_agg_prices {

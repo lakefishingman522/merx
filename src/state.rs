@@ -205,27 +205,14 @@ impl ConnectionStateStruct {
         users.check_user_in_state(token, valid_since_duration)
     }
 
-    pub fn validate_exchanges_string(
-        &self,
-        username: &str,
-        exchanges_string: &str,
-    ) -> Result<String, String> {
-        let users = self.users.read().unwrap();
-        users.validate_exchanges_string(username, exchanges_string)
-    }
-
     pub fn validate_exchanges_vector(
         &self,
         username: &str,
         exchanges: &Vec<String>,
+        market_data_id: Option<String>,
     ) -> Result<Vec<String>, MerxErrorResponse> {
         let users = self.users.read().unwrap();
-        users.validate_exchanges_vector(username, exchanges)
-    }
-
-    pub fn get_all_cbag_markets_string(&self, username: &str) -> Result<String, String> {
-        let users = self.users.read().unwrap();
-        users.get_all_cbag_markets_string(username)
+        users.validate_exchanges_vector(username, exchanges, market_data_id)
     }
 
     pub fn add_or_update_symbols(

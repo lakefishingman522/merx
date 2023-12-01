@@ -54,6 +54,10 @@ struct Args {
     /// optional: if you want to run mercx in production mode. Will serve on 0.0.0.0
     #[argh(switch)]
     prod: bool,
+
+    /// optional: specify http scheme for rest requests. https by default
+    #[argh(option, default = "String::from(\"https\")")]
+    http_scheme: String,
 }
 
 #[tokio::main]
@@ -61,6 +65,11 @@ async fn main() {
     // Configure the tracing subscriber
     let filter = EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into());
     tracing_subscriber::fmt::Subscriber::builder()
+        .compact()
+        .with_file(true)
+        .with_line_number(true)
+        .with_thread_ids(true)
+        .with_target(false)
         .with_env_filter(filter)
         .init();
 
@@ -75,9 +84,10 @@ async fn main() {
     if args.token == "none" {
         panic!("token is required")
     }
+    let http_scheme = args.http_scheme.clone();
     let uris = URIs {
         cbag_uri: args.cbag_uri.clone(),
-        auth_uri: args.auth_uri.clone(),
+        auth_uri: format!("{}://{}", http_scheme, args.auth_uri.clone()),
         cbag_depth_uri: if args.cbag_depth_uri == "none" {
             args.cbag_uri.clone()
         } else {

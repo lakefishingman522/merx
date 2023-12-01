@@ -61,6 +61,7 @@ pub fn handle_subscription(
     sender: Tx,
     market_data_type: MarketDataType,
     username: &str,
+    market_data_id: Option<String>
 ) {
     info!("Received subscription message: {}", subscription_msg);
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
@@ -196,6 +197,11 @@ pub fn handle_subscription(
             };
             return;
         }
+    };
+
+    let client_id = match market_data_id {
+        Some(id) =>  client_id.to_string() + "_" + id.as_str(),
+        None => client_id
     };
 
     let subscription = Subscription::LegacyCbbo(LegacyCbboStruct::new(

@@ -43,6 +43,7 @@ pub fn handle_subscription(
     sender: Tx,
     market_data_type: MarketDataType,
     username: &str,
+    market_data_id: Option<String>
 ) {
     //check that state is ready
     if !connection_state.is_ready() {
@@ -125,7 +126,7 @@ pub fn handle_subscription(
     }
 
     let cbag_markets =
-        match connection_state.validate_exchanges_vector(username, &parsed_sub_msg.exchanges) {
+        match connection_state.validate_exchanges_vector(username, &parsed_sub_msg.exchanges, market_data_id) {
             Ok(cbag_markets) => cbag_markets,
             Err(merx_error_response) => {
                 match sender.try_send(axum::extract::ws::Message::Text(
