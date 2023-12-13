@@ -3,6 +3,7 @@ use axum::extract::Extension;
 use axum::routing::post;
 use axum::{routing::get, Router};
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tower_http::trace::{DefaultMakeSpan, TraceLayer};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -25,7 +26,7 @@ use merx::functions::{
     root, URIs,
 };
 use merx::md_handlers::rest_cost_calculator_v1;
-use merx::state::ConnectionState;
+use merx::state::{ConnectionStateStruct};
 use merx::tasks::start_pull_symbols_task;
 
 #[derive(FromArgs)]
@@ -58,6 +59,10 @@ struct Args {
     /// optional: specify http scheme for rest requests. https by default
     #[argh(option, default = "String::from(\"https\")")]
     http_scheme: String,
+
+    /// auth token used to pull currency pairs. This is a token that can be authenticated on portal
+    #[argh(option, default = "String::from(\"\")")]
+    product_whitelist: String,
 }
 
 #[tokio::main]
@@ -94,6 +99,10 @@ async fn main() {
             args.cbag_depth_uri.clone()
         },
     };
+
+    let whitelist = args.product_whitelist.split(',')
+        .map(|s| s.to_string())
+        .collect();
     // let cbag_uri = args.cbag_uri.clone();
     // let auth_uri = args.auth_uri.clone();
     let port = args.port;
@@ -107,7 +116,7 @@ async fn main() {
 
     // connection state which will hold a state of all subscriptions
     // and their respective clients
-    let connection_state = ConnectionState::default();
+    let connection_state = Arc::new(ConnectionStateStruct::new(whitelist));
     // will hold the number of subscriptions per client. Useful for knowing
     // when to disconnect from the websocket session
 
@@ -152,6 +161,8 @@ async fn main() {
         // .route("/ws/cost-calculator/:symbol", get(axum_ws_handler))
         .route("/api/streaming/cbbo", get(axum_ws_handler))
         .route("/api/streaming/cbbo/", get(axum_ws_handler))
+        .route("/api/public/streaming/cbbo", get(axum_ws_handler))
+        .route("/api/public/streaming/cbbo/", get(axum_ws_handler))
         .route("/api/streaming/market_depth", get(axum_ws_handler))
         .route("/api/streaming/market_depth/", get(axum_ws_handler))
         .fallback(fallback)

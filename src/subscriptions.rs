@@ -93,15 +93,25 @@ pub struct LegacyCbboStruct {
     currency_pair: String,
     size_filter: String,
     interval_ms: u32,
-    client_id: String,
+    client_id: Option<String>,
 }
 
 impl SubTraits for LegacyCbboStruct {
     fn get_url(&self) -> String {
-        format!(
-            "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&user=merx",
-            self.currency_pair, self.size_filter, self.interval_ms, self.client_id
-        )
+        match &self.client_id {
+            Some(client_id) => {
+                format!(
+                    "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&user=merx",
+                    self.currency_pair, self.size_filter, self.interval_ms, client_id
+                )
+            },
+            None => {
+                format!(
+                    "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&user=merx",
+                    self.currency_pair, self.size_filter, self.interval_ms
+                )
+            }
+        }
     }
 
     fn get_market_data_type(&self) -> MarketDataType {
@@ -115,7 +125,7 @@ impl LegacyCbboStruct {
         currency_pair: String,
         size_filter: String,
         interval_ms: u32,
-        client_id: String,
+        client_id: Option<String>,
     ) -> Self {
         Self {
             market_data_type,

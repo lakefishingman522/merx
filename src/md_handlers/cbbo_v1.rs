@@ -60,8 +60,9 @@ pub fn handle_subscription(
     cbag_uri: String,
     sender: Tx,
     market_data_type: MarketDataType,
-    username: &str,
-    market_data_id: Option<String>
+    username: Option<String>,
+    market_data_id: Option<String>,
+    enforce_subscription_whitelist: bool,
 ) {
     info!("Received subscription message: {}", subscription_msg);
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
@@ -79,6 +80,23 @@ pub fn handle_subscription(
             return;
         }
     };
+
+    if enforce_subscription_whitelist {
+        match connection_state.is_pair_whitelisted(&parsed_sub_msg.currency_pair) {
+            Ok(_) => {},
+            Err(merx_error_response) => {
+                match sender.try_send(axum::extract::ws::Message::Text(
+                    merx_error_response.to_json_str(),
+                )) {
+                    Ok(_) => {}
+                    Err(_try_send_error) => {
+                        // warn!("Buffer probably full.");
+                    }
+                };
+                return;
+            }
+        }
+    }
 
     //validate the currency pair
     match connection_state.is_pair_valid(&parsed_sub_msg.currency_pair) {
@@ -184,24 +202,35 @@ pub fn handle_subscription(
     //     }
     // };
 
-    let client_id = match connection_state.get_client_id(username) {
-        Ok(id) => id,
-        Err(_) => {
-            match sender.try_send(axum::extract::ws::Message::Text(
-                MerxErrorResponse::new(ErrorCode::ServerError).to_json_str(),
-            )) {
-                Ok(_) => {}
-                Err(_try_send_error) => {
-                    // warn!("Buffer probably full.");
+    let client_id = match username{
+        Some(username) => {
+            match connection_state.get_client_id(username.as_str()) {
+                Ok(id) => Some(id),
+                Err(_) => {
+                    match sender.try_send(axum::extract::ws::Message::Text(
+                        MerxErrorResponse::new(ErrorCode::ServerError).to_json_str(),
+                    )) {
+                        Ok(_) => {}
+                        Err(_try_send_error) => {
+                            // warn!("Buffer probably full.");
+                        }
+                    };
+                    return;
                 }
-            };
-            return;
-        }
+            }
+        },
+        None => None
     };
 
-    let client_id = match market_data_id {
-        Some(id) =>  client_id.to_string() + "_" + id.as_str(),
-        None => client_id
+
+    let client_id = match client_id {
+        Some(client_id) => {
+            match market_data_id {
+                Some(id) =>  Some(client_id.to_string() + "_" + id.as_str()),
+                None => Some(client_id)
+            }
+        }
+        None => None
     };
 
     let subscription = Subscription::LegacyCbbo(LegacyCbboStruct::new(

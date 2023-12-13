@@ -55,11 +55,30 @@ pub struct ConnectionStateStruct {
     pub subscription_count: RwLock<SubscriptionCount>,
     pub users: RwLock<Users>,
     pub symbols: RwLock<Symbols>,
+    pub symbols_whitelist: Vec<String>,
 }
 
 pub type ConnectionState = Arc<ConnectionStateStruct>;
 
+
 impl ConnectionStateStruct {
+    pub fn new(symbols_whitelist: Vec<String>) -> Self {
+        Self {
+            subscription_state: RwLock::new(HashMap::new()),
+            subscription_count: RwLock::new(HashMap::new()),
+            users: RwLock::new(Users::default()),
+            symbols: RwLock::new(Symbols::default()),
+            symbols_whitelist: symbols_whitelist
+        }
+    }
+
+    pub fn is_pair_whitelisted(&self, pair: &str) -> Result<(), MerxErrorResponse> {
+        if self.symbols_whitelist.contains(&pair.to_string()) {
+            return Ok(());
+        }
+        Err(MerxErrorResponse::new(ErrorCode::InvalidCurrencyPair))
+    }
+
     pub fn add_client_to_subscription(
         &self,
         client_address: &SocketAddr,
