@@ -43,7 +43,7 @@ pub fn handle_subscription(
     sender: Tx,
     market_data_type: MarketDataType,
     username: &str,
-    market_data_id: Option<String>
+    market_data_id: Option<String>,
 ) {
     //check that state is ready
     if !connection_state.is_ready() {
@@ -125,21 +125,24 @@ pub fn handle_subscription(
         return;
     }
 
-    let cbag_markets =
-        match connection_state.validate_exchanges_vector(username, &parsed_sub_msg.exchanges, market_data_id) {
-            Ok(cbag_markets) => cbag_markets,
-            Err(merx_error_response) => {
-                match sender.try_send(axum::extract::ws::Message::Text(
-                    merx_error_response.to_json_str(),
-                )) {
-                    Ok(_) => {}
-                    Err(_try_send_error) => {
-                        // warn!("Buffer probably full.");
-                    }
-                };
-                return;
-            }
-        };
+    let cbag_markets = match connection_state.validate_exchanges_vector(
+        username,
+        &parsed_sub_msg.exchanges,
+        market_data_id,
+    ) {
+        Ok(cbag_markets) => cbag_markets,
+        Err(merx_error_response) => {
+            match sender.try_send(axum::extract::ws::Message::Text(
+                merx_error_response.to_json_str(),
+            )) {
+                Ok(_) => {}
+                Err(_try_send_error) => {
+                    // warn!("Buffer probably full.");
+                }
+            };
+            return;
+        }
+    };
 
     let depth_limit = match parsed_sub_msg.depth_limit {
         Some(depth_limit) => depth_limit.to_string(),
