@@ -43,7 +43,7 @@ struct Exchange {
     customer_specific: bool,
 }
 
-impl Exchange{
+impl Exchange {
     pub fn to_cbag_market(&self, client_id: &str, market_data_id: Option<String>) -> String {
         exchange_to_cbag_market(
             &self.slug,
@@ -51,7 +51,7 @@ impl Exchange{
             self.non_aggregated_prices,
             self.customer_specific,
             self.public,
-            market_data_id
+            market_data_id,
         )
     }
 }
@@ -81,7 +81,6 @@ impl Users {
     ) -> Result<String, String> {
         let mut exchanges = HashMap::new();
         for exchange_response in &user_response.exchanges {
-
             let exchange = Exchange {
                 slug: exchange_response.slug.clone(),
                 name: exchange_response.name.clone(),
@@ -194,7 +193,11 @@ impl Users {
                 let mut cbag_markets = Vec::new();
                 for exchange in exchanges_vec {
                     if let Some(exchange) = user.exchanges.get(exchange) {
-                        cbag_markets.push(exchange.to_cbag_market(user.client_id.as_str(), market_data_id.clone()).clone());
+                        cbag_markets.push(
+                            exchange
+                                .to_cbag_market(user.client_id.as_str(), market_data_id.clone())
+                                .clone(),
+                        );
                     } else {
                         return Err(MerxErrorResponse::new_and_override_error_text(
                             ErrorCode::InvalidExchanges,
@@ -216,7 +219,6 @@ impl Users {
             }
         }
     }
-
 
     pub fn get_client_id(&self, username: &str) -> Result<String, String> {
         let user = self.users.get(username);
