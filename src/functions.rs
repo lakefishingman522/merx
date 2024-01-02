@@ -174,7 +174,7 @@ pub async fn axum_ws_handler(
             route,
             subscription_type,
             username,
-            market_data_id
+            market_data_id,
         )
     })
 }
@@ -190,7 +190,7 @@ async fn axum_handle_socket(
     market_data_type: &MarketDataType,
     subscription_type: &SubscriptionType,
     username: String,
-    market_data_id: Option<String>
+    market_data_id: Option<String>,
 ) {
     // added by karun
     let (tx, mut rx): (Sender<axum_Message>, Receiver<axum_Message>) = channel(*SENDER_BOUND);

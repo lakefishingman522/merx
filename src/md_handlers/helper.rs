@@ -35,8 +35,8 @@ pub fn exchange_to_cbag_market(
     };
     if customer_specific {
         let client_id = match market_data_id {
-            Some(id) =>  client_id.to_string() + "_" + id.as_str(),
-            None => client_id.to_string()
+            Some(id) => client_id.to_string() + "_" + id.as_str(),
+            None => client_id.to_string(),
         };
         exchange_str = format!("{}-{}", client_id, exchange_str);
     }

@@ -34,11 +34,20 @@ impl SubTraits for Subscription {
             Subscription::Direct(sub) => sub.get_market_data_type(),
         }
     }
+
+    fn get_timeout_duration_ms(&self) -> u64 {
+        match self {
+            Subscription::Snapshot(sub) => sub.get_timeout_duration_ms(),
+            Subscription::LegacyCbbo(sub) => sub.get_timeout_duration_ms(),
+            Subscription::Direct(sub) => sub.get_timeout_duration_ms(),
+        }
+    }
 }
 
 pub trait SubTraits {
     fn get_url(&self) -> String;
     fn get_market_data_type(&self) -> MarketDataType;
+    fn get_timeout_duration_ms(&self) -> u64;
 }
 
 #[derive(Eq, Hash, PartialEq, Clone)]
@@ -85,6 +94,10 @@ impl SubTraits for SnapshotStruct {
     fn get_market_data_type(&self) -> MarketDataType {
         self.market_data_type
     }
+
+    fn get_timeout_duration_ms(&self) -> u64 {
+        self.interval_ms as u64 * 4
+    }
 }
 
 #[derive(Eq, Hash, PartialEq, Clone)]
@@ -116,6 +129,10 @@ impl SubTraits for LegacyCbboStruct {
 
     fn get_market_data_type(&self) -> MarketDataType {
         self.market_data_type
+    }
+
+    fn get_timeout_duration_ms(&self) -> u64 {
+        self.interval_ms as u64 * 4
     }
 }
 
@@ -159,5 +176,10 @@ impl SubTraits for DirectStruct {
 
     fn get_market_data_type(&self) -> MarketDataType {
         self.market_data_type
+    }
+
+    fn get_timeout_duration_ms(&self) -> u64 {
+        // set a 10 second timeout for direct subscriptions
+        10000
     }
 }

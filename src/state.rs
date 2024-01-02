@@ -343,6 +343,7 @@ pub fn subscribe_to_market_data(
         let mut last_time_listeners_checked = Instant::now() - Duration::from_secs(60);
         let mut active_listeners: Vec<Tx> = Vec::new();
         let mut number_of_active_listeners: usize = 0;
+        let timeout_duration_ms = subscription.get_timeout_duration_ms();
         // TODO: after x number of timeouts, should check if clients are still connected
         loop {
             if bad_request || consecutive_errors >= 5 {
@@ -455,15 +456,22 @@ pub fn subscribe_to_market_data(
             );
             let (_write, mut read) = ws_stream.split();
             consecutive_errors = 0;
+
             loop {
-                let message = read.next().await;
+                let message =
+                    timeout(Duration::from_millis(timeout_duration_ms), read.next()).await;
+
                 let msg = match message {
-                    Some(msg) => msg,
-                    None => {
+                    Ok(Some(msg)) => msg,
+                    Ok(None) => {
                         error!(
                             "Unable to read message, restarting subscription {}",
                             ws_endpoint
                         );
+                        break;
+                    }
+                    Err(_) => {
+                        error!("Timed out receiving data from subscription {}", ws_endpoint);
                         break;
                     }
                 };
