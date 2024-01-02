@@ -26,7 +26,7 @@ use merx::functions::{
     root, URIs,
 };
 use merx::md_handlers::rest_cost_calculator_v1;
-use merx::state::{ConnectionStateStruct};
+use merx::state::ConnectionStateStruct;
 use merx::tasks::start_pull_symbols_task;
 
 #[derive(FromArgs)]
@@ -100,7 +100,9 @@ async fn main() {
         },
     };
 
-    let whitelist = args.product_whitelist.split(',')
+    let whitelist = args
+        .product_whitelist
+        .split(',')
         .map(|s| s.to_string())
         .collect();
     // let cbag_uri = args.cbag_uri.clone();

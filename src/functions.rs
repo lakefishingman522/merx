@@ -252,8 +252,12 @@ async fn axum_handle_socket(
         loop {
             sleep(Duration::from_millis(1000)).await;
             {
-                if matches!(subscription_type_clone, SubscriptionType::Subscription) || matches!(subscription_type_clone, SubscriptionType::PublicSubscription)
-                    && (tokio::time::Instant::now() - connection_time < Duration::from_secs(20))
+                if matches!(subscription_type_clone, SubscriptionType::Subscription)
+                    || matches!(
+                        subscription_type_clone,
+                        SubscriptionType::PublicSubscription
+                    ) && (tokio::time::Instant::now() - connection_time
+                        < Duration::from_secs(20))
                 {
                     continue;
                 }
@@ -267,7 +271,8 @@ async fn axum_handle_socket(
                 }
                 if matches!(
                     subscription_type_clone,
-                    SubscriptionType::PublicSubscription) {
+                    SubscriptionType::PublicSubscription
+                ) {
                     if exceeds_max_session_time(connection_time) {
                         return;
                     }
@@ -318,59 +323,55 @@ async fn axum_handle_socket(
             axum::extract::ws::Message::Text(msg_str) => {
                 // info!("{} Received a text frame", &client_address);
                 match subscription_type {
-                    SubscriptionType::Subscription => {
-                        match market_data_type {
-                            MarketDataType::CbboV1 => {
-                                cbbo_v1::handle_subscription(
-                                    &client_address,
-                                    &recv_task_connection_state,
-                                    msg_str,
-                                    recv_task_cbag_uri.clone(),
-                                    tx_task_tx.clone(),
-                                    *market_data_type,
-                                    Some(username.clone()),
-                                    market_data_id.clone(),
-                                    false,
-                                );
-                            }
-                            MarketDataType::MarketDepthV1 => {
-                                market_depth_v1::handle_subscription(
-                                    &client_address,
-                                    &recv_task_connection_state,
-                                    msg_str,
-                                    recv_task_cbag_depth_uri.clone(),
-                                    tx_task_tx.clone(),
-                                    *market_data_type,
-                                    username.clone().as_str(),
-                                    market_data_id.clone(),
-                                );
-                            }
-                            MarketDataType::RestCostCalculatorV1 => {
-                                error!("unexpected Market Data Type");
-                            }
-                            MarketDataType::Direct => {
-                                info!("{} Received a message, ignoring", &client_address);
-                            }
+                    SubscriptionType::Subscription => match market_data_type {
+                        MarketDataType::CbboV1 => {
+                            cbbo_v1::handle_subscription(
+                                &client_address,
+                                &recv_task_connection_state,
+                                msg_str,
+                                recv_task_cbag_uri.clone(),
+                                tx_task_tx.clone(),
+                                *market_data_type,
+                                Some(username.clone()),
+                                market_data_id.clone(),
+                                false,
+                            );
+                        }
+                        MarketDataType::MarketDepthV1 => {
+                            market_depth_v1::handle_subscription(
+                                &client_address,
+                                &recv_task_connection_state,
+                                msg_str,
+                                recv_task_cbag_depth_uri.clone(),
+                                tx_task_tx.clone(),
+                                *market_data_type,
+                                username.clone().as_str(),
+                                market_data_id.clone(),
+                            );
+                        }
+                        MarketDataType::RestCostCalculatorV1 => {
+                            error!("unexpected Market Data Type");
+                        }
+                        MarketDataType::Direct => {
+                            info!("{} Received a message, ignoring", &client_address);
                         }
                     },
-                    SubscriptionType::PublicSubscription => {
-                        match market_data_type {
-                            MarketDataType::CbboV1 => {
-                                cbbo_v1::handle_subscription(
-                                    &client_address,
-                                    &recv_task_connection_state,
-                                    msg_str,
-                                    recv_task_cbag_uri.clone(),
-                                    tx_task_tx.clone(),
-                                    *market_data_type,
-                                    None,
-                                    market_data_id.clone(),
-                                    true
-                                );
-                            }
-                            _ => {
-                                info!("{} Received an unexpected text frame", &client_address);
-                            }
+                    SubscriptionType::PublicSubscription => match market_data_type {
+                        MarketDataType::CbboV1 => {
+                            cbbo_v1::handle_subscription(
+                                &client_address,
+                                &recv_task_connection_state,
+                                msg_str,
+                                recv_task_cbag_uri.clone(),
+                                tx_task_tx.clone(),
+                                *market_data_type,
+                                None,
+                                market_data_id.clone(),
+                                true,
+                            );
+                        }
+                        _ => {
+                            info!("{} Received an unexpected text frame", &client_address);
                         }
                     },
                     _ => {

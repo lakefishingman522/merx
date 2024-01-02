@@ -83,7 +83,7 @@ pub fn handle_subscription(
 
     if enforce_subscription_whitelist {
         match connection_state.is_pair_whitelisted(&parsed_sub_msg.currency_pair) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(merx_error_response) => {
                 match sender.try_send(axum::extract::ws::Message::Text(
                     merx_error_response.to_json_str(),
@@ -202,7 +202,7 @@ pub fn handle_subscription(
     //     }
     // };
 
-    let client_id = match username{
+    let client_id = match username {
         Some(username) => {
             match connection_state.get_client_id(username.as_str()) {
                 Ok(id) => Some(id),
@@ -218,19 +218,16 @@ pub fn handle_subscription(
                     return;
                 }
             }
-        },
-        None => None
+        }
+        None => None,
     };
 
-
     let client_id = match client_id {
-        Some(client_id) => {
-            match market_data_id {
-                Some(id) =>  Some(client_id.to_string() + "_" + id.as_str()),
-                None => Some(client_id)
-            }
-        }
-        None => None
+        Some(client_id) => match market_data_id {
+            Some(id) => Some(client_id.to_string() + "_" + id.as_str()),
+            None => Some(client_id),
+        },
+        None => None,
     };
 
     let subscription = Subscription::LegacyCbbo(LegacyCbboStruct::new(

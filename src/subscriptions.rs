@@ -117,7 +117,7 @@ impl SubTraits for LegacyCbboStruct {
                     "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&client={}&user=merx",
                     self.currency_pair, self.size_filter, self.interval_ms, client_id
                 )
-            },
+            }
             None => {
                 format!(
                     "/ws/legacy-cbbo/{}?quantity_filter={}&interval_ms={}&user=merx",

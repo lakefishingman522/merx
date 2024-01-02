@@ -60,7 +60,6 @@ pub struct ConnectionStateStruct {
 
 pub type ConnectionState = Arc<ConnectionStateStruct>;
 
-
 impl ConnectionStateStruct {
     pub fn new(symbols_whitelist: Vec<String>) -> Self {
         Self {
@@ -68,7 +67,7 @@ impl ConnectionStateStruct {
             subscription_count: RwLock::new(HashMap::new()),
             users: RwLock::new(Users::default()),
             symbols: RwLock::new(Symbols::default()),
-            symbols_whitelist: symbols_whitelist
+            symbols_whitelist: symbols_whitelist,
         }
     }
 
