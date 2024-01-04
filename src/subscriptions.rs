@@ -96,7 +96,8 @@ impl SubTraits for SnapshotStruct {
     }
 
     fn get_timeout_duration_ms(&self) -> u64 {
-        self.interval_ms as u64 * 4
+        // timeout should be at least 2500 ms or 4x interval
+        std::cmp::max(self.interval_ms as u64 * 4, 2500)
     }
 }
 
@@ -122,7 +123,8 @@ impl SubTraits for LegacyCbboStruct {
     }
 
     fn get_timeout_duration_ms(&self) -> u64 {
-        self.interval_ms as u64 * 4
+        // timeout should be at least 2500 ms or 4x interval
+        std::cmp::max(self.interval_ms as u64 * 4, 2500)
     }
 }
 
