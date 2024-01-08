@@ -22,7 +22,7 @@ use tracing_subscriber::EnvFilter;
 use merx::art::log_merx_title;
 use merx::functions::{
     authenticate_user, axum_ws_handler, fallback, forward_request, get_cached_response, get_state,
-    root, URIs,
+    root, URIs, volume,
 };
 use merx::md_handlers::rest_cost_calculator_v1;
 use merx::state::ConnectionState;
@@ -122,6 +122,7 @@ async fn main() {
         // REST endpoints
         .route("/version", get(forward_request))
         .route("/state", get(get_state))
+        .route("/volume", get(volume))
         .route("/authenticate_user", get(authenticate_user))
         .route("/api/currency_pairs", get(get_cached_response))
         .route("/api/currency_pairs/", get(get_cached_response))
