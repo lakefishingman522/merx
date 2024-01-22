@@ -36,6 +36,10 @@ struct Args {
     #[argh(option, default = "String::from(\"none\")")]
     cbag_uri: String,
 
+    /// the uri for the chart api.
+    #[argh(option, default = "String::from(\"none\")")]
+    chart_uri: String,
+
     /// the uri for the cbag. Can be cbag load balancer
     #[argh(option, default = "String::from(\"none\")")]
     cbag_depth_uri: String,
@@ -63,6 +67,10 @@ struct Args {
     /// auth token used to pull currency pairs. This is a token that can be authenticated on portal
     #[argh(option, default = "String::from(\"\")")]
     product_whitelist: String,
+
+    /// auth token used to pull currency pairs. This is a token that can be authenticated on portal
+    #[argh(option, default = "String::from(\"\")")]
+    chart_exchanges: String,
 }
 
 #[tokio::main]
@@ -83,6 +91,9 @@ async fn main() {
     if args.cbag_uri == "none" {
         panic!("cbag-uri is required")
     }
+    if args.chart_uri == "none" {
+        panic!("cbag-uri is required")
+    }
     if args.auth_uri == "none" {
         panic!("auth-uri is required")
     }
@@ -98,10 +109,16 @@ async fn main() {
         } else {
             args.cbag_depth_uri.clone()
         },
+        chart_uri: args.chart_uri.clone(),
     };
 
     let whitelist = args
         .product_whitelist
+        .split(',')
+        .map(|s| s.to_string())
+        .collect();
+    let chart_exchanges = args
+        .chart_exchanges
         .split(',')
         .map(|s| s.to_string())
         .collect();
@@ -118,7 +135,7 @@ async fn main() {
 
     // connection state which will hold a state of all subscriptions
     // and their respective clients
-    let connection_state = Arc::new(ConnectionStateStruct::new(whitelist));
+    let connection_state = Arc::new(ConnectionStateStruct::new(whitelist, chart_exchanges));
     // will hold the number of subscriptions per client. Useful for knowing
     // when to disconnect from the websocket session
 

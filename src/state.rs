@@ -60,6 +60,7 @@ pub struct ConnectionStateStruct {
     pub users: RwLock<Users>,
     pub symbols: RwLock<Symbols>,
     pub symbols_whitelist: Vec<String>,
+    pub chart_exchanges: Vec<String>,
     pub product_to_chart: RwLock<HashMap<String, Chart>>,
 }
 
@@ -70,7 +71,7 @@ struct Chart{
     data: Option<String>
 }
 impl ConnectionStateStruct {
-    pub fn new(symbols_whitelist: Vec<String>) -> Self {
+    pub fn new(symbols_whitelist: Vec<String>, chart_exchanges: Vec<String>) -> Self {
         Self {
             subscription_state: RwLock::new(HashMap::new()),
             subscription_count: RwLock::new(HashMap::new()),
@@ -78,6 +79,7 @@ impl ConnectionStateStruct {
             symbols: RwLock::new(Symbols::default()),
             product_to_chart: RwLock::new(HashMap::new()),
             symbols_whitelist: symbols_whitelist,
+            chart_exchanges: chart_exchanges
         }
     }
 
@@ -86,13 +88,13 @@ impl ConnectionStateStruct {
         product_to_chart.get(product).map(|chart| chart.data.clone()).flatten()
     }
 
-    pub fn subscribe_ohlc_chart(&self, product: String, connection_state: ConnectionState) {
+    pub fn subscribe_ohlc_chart(&self, product: String, connection_state: ConnectionState, chart_uri: String) {
         let mut product_to_chart = self.product_to_chart.write().unwrap();
         if !product_to_chart.contains_key(&product) {
             product_to_chart.insert(product.clone(), Chart{is_subscribed: true, data: None});
             tokio::spawn(async move {
                 loop {
-                    let chart = fetch_chart(&product).await;
+                    let chart = fetch_chart(&product, &chart_uri).await;
                     match chart {
                         Some(response) => {
                             connection_state.product_to_chart.write().unwrap().insert(product.clone().to_string(), Chart{is_subscribed: true, data: Some(response)});
@@ -360,7 +362,7 @@ fn parse_tung_response_body_to_str(body: &Option<Vec<u8>>) -> Result<String, Str
 }
 
 
-pub async fn fetch_chart(product: &String) -> Option<String> {
+pub async fn fetch_chart(product: &String, chart_uri: &String) -> Option<String> {
     let now = Utc::now();
     let end_time = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
     let start_time = now - Duration::from_secs(60 * 60 * 24);
@@ -372,7 +374,7 @@ pub async fn fetch_chart(product: &String) -> Option<String> {
     // TODO reuse client
     let client = Client::new();
     // TODO configure url
-    let target_res = client.get(&format!("http://{}{}", "charts-dixjvfnxqqm8vmxn.coinroutes.com:7777/ohlc/?", endpoint)).send().await;
+    let target_res = client.get(&format!("http://{}{}{}", chart_uri, "/ohlc/?", endpoint)).send().await;
     return match target_res{
         Ok(response) => {
             match response.text().await{

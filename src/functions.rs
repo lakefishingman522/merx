@@ -52,6 +52,7 @@ pub struct URIs {
     pub cbag_uri: String,
     pub cbag_depth_uri: String,
     pub auth_uri: String,
+    pub chart_uri: String,
 }
 
 pub async fn fallback(uri: Uri, OriginalUri(original_uri): OriginalUri) -> (StatusCode, String) {
@@ -556,8 +557,8 @@ pub async fn get_cached_ohlc_response(
                 .unwrap()
         }
         None => {
-            connection_state.subscribe_ohlc_chart(product.clone(), Arc::clone(&connection_state));
-            let chart = fetch_chart(&product.clone()).await;
+            connection_state.subscribe_ohlc_chart(product.clone(), Arc::clone(&connection_state), uris.chart_uri.clone());
+            let chart = fetch_chart(&product.clone(), &uris.chart_uri.clone()).await;
             return match chart {
                 Some(chart) => {
                     Response::builder()
