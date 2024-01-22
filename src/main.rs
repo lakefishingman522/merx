@@ -23,7 +23,7 @@ use tracing_subscriber::EnvFilter;
 use merx::art::log_merx_title;
 use merx::functions::{
     authenticate_user, axum_ws_handler, fallback, forward_request, get_cached_response, get_state,
-    root, URIs,
+    get_cached_ohlc_response, root, URIs,
 };
 use merx::md_handlers::rest_cost_calculator_v1;
 use merx::state::ConnectionStateStruct;
@@ -163,6 +163,8 @@ async fn main() {
         // .route("/ws/cost-calculator/:symbol", get(axum_ws_handler))
         .route("/api/streaming/cbbo", get(axum_ws_handler))
         .route("/api/streaming/cbbo/", get(axum_ws_handler))
+        .route("/api/public/streaming/ohlc/", get(get_cached_ohlc_response))
+        .route("/api/public/streaming/ohlc", get(get_cached_ohlc_response))
         .route("/api/public/streaming/cbbo", get(axum_ws_handler))
         .route("/api/public/streaming/cbbo/", get(axum_ws_handler))
         .route("/api/streaming/market_depth", get(axum_ws_handler))

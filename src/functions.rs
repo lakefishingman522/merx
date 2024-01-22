@@ -529,3 +529,56 @@ pub async fn get_cached_response(
             .unwrap(),
     }
 }
+
+pub async fn get_cached_ohlc_response(
+    State(connection_state): State<ConnectionState>,
+    Extension(uris): Extension<URIs>,
+    // OriginalUri(original_uri): OriginalUri,
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+    req: Request<Body>,
+) -> impl IntoResponse {
+    if !params.contains_key("product") || !params.contains_key("start_time") || !params.contains_key("end_time") || !params.contains_key("start_time") {
+        return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Body::from("product and interval are required".to_string()))
+            .unwrap();
+    }
+
+    let product = params.get("product").expect("product is required");
+    let start_time = params.get("start_time").expect("start_time is required");
+    let end_time = params.get("end_time").expect("end_time is required");
+    let default_interval = String::from("m");
+    let interval = params.get("interval").unwrap_or(&default_interval);
+    let default_size = String::from("0");
+    let size = params.get("size").unwrap_or(&default_size);
+
+    let endpoint = format!("interval={}&product={}&start_time={}&end_time={}&size={}&exchanges=binance,crypto_com_futures,coinbase,gdax", interval, product, start_time, end_time, size);
+    //make a rest request
+    let client = Client::new();
+    let target_res = client.get(&format!("http://{}{}", "charts-dixjvfnxqqm8vmxn.coinroutes.com:7777/ohlc/?", endpoint)).send().await;
+    return match target_res {
+        Ok(response) => {
+            // Extract the status code
+            let status = StatusCode::from_u16(response.status().as_u16()).unwrap();
+            // Extract the headers
+            let headers = response.headers().clone();
+            // Extract the body as bytes
+            let body_bytes = response.bytes().await.unwrap();
+            // Create an Axum response using the extracted parts
+            let mut axum_response = Response::new(Body::from(body_bytes));
+            *axum_response.status_mut() = status;
+            axum_response.headers_mut().extend(headers);
+
+            axum_response
+        }
+        Err(_err) => {
+            // Build a 404 response with a body of type `axum::http::response::Body`
+            Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .body(Body::from("Not Found"))
+                .unwrap()
+        }
+    };
+}
+
