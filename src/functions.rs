@@ -538,10 +538,10 @@ pub async fn get_cached_ohlc_response(
     Query(params): Query<HashMap<String, String>>,
     req: Request<Body>,
 ) -> impl IntoResponse {
-    if !params.contains_key("product") || !params.contains_key("start_time") || !params.contains_key("end_time") || !params.contains_key("start_time") {
+    if !params.contains_key("product")  {
         return Response::builder()
             .status(StatusCode::BAD_REQUEST)
-            .body(Body::from("product and interval are required".to_string()))
+            .body(Body::from("product is required".to_string()))
             .unwrap();
     }
 

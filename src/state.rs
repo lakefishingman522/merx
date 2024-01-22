@@ -84,7 +84,7 @@ impl ConnectionStateStruct {
     pub fn subscribe_ohlc_chart(&self, product: String, connection_state: ConnectionState) {
         let product_to_chart = self.product_to_chart.read().unwrap();
         if !product_to_chart.contains_key(&product) {
-            // add last request timestamp
+            // TODO prevent multiple concurrent tasks for the same product
             tokio::spawn(async move {
                 let now = Utc::now();
                 let end_time = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
@@ -92,11 +92,15 @@ impl ConnectionStateStruct {
                 let start_time = start_time.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
                 let interval = String::from("m");
                 let size = String::from("0");
+                // TODO configure exchanges
                 let endpoint = format!("interval={}&product={}&start_time={}&end_time={}&size={}&exchanges=binance,crypto_com_futures,coinbase,gdax", interval, product, start_time, end_time, size);
+                // TODO reuse client
                 let client = Client::new();
+                // TODO configure url
                 let target_res = client.get(&format!("http://{}{}", "charts-dixjvfnxqqm8vmxn.coinroutes.com:7777/ohlc/?", endpoint)).send().await;
                 match target_res {
                     Ok(response) => {
+                        // TODO dont unwrap
                         let response = Some(response.text().await.unwrap());
                         connection_state.product_to_chart.write().unwrap().insert(product.clone().to_string(), response.unwrap());
                     }
