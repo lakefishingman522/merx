@@ -15,7 +15,7 @@ use axum::extract::ws::CloseFrame;
 use axum::extract::ws::Message as axum_Message;
 use axum::http::{Response, StatusCode};
 use chrono::Utc;
-use reqwest::Client;
+use reqwest::{Client, Error};
 use tokio::time::{sleep, timeout, Duration};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, tungstenite};
@@ -81,34 +81,24 @@ impl ConnectionStateStruct {
         let product_to_chart = self.product_to_chart.read().unwrap();
         product_to_chart.get(product).map(|chart| chart.to_string())
     }
+
     pub fn subscribe_ohlc_chart(&self, product: String, connection_state: ConnectionState) {
         let product_to_chart = self.product_to_chart.read().unwrap();
         if !product_to_chart.contains_key(&product) {
             // TODO prevent multiple concurrent tasks for the same product
             tokio::spawn(async move {
-                let now = Utc::now();
-                let end_time = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
-                let start_time = now - Duration::from_secs(60 * 60 * 24);
-                let start_time = start_time.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
-                let interval = String::from("m");
-                let size = String::from("0");
-                // TODO configure exchanges
-                let endpoint = format!("interval={}&product={}&start_time={}&end_time={}&size={}&exchanges=binance,crypto_com_futures,coinbase,gdax", interval, product, start_time, end_time, size);
-                // TODO reuse client
-                let client = Client::new();
-                // TODO configure url
-                let target_res = client.get(&format!("http://{}{}", "charts-dixjvfnxqqm8vmxn.coinroutes.com:7777/ohlc/?", endpoint)).send().await;
-                match target_res {
-                    Ok(response) => {
-                        // TODO dont unwrap
-                        let response = Some(response.text().await.unwrap());
-                        connection_state.product_to_chart.write().unwrap().insert(product.clone().to_string(), response.unwrap());
-                    }
-                    Err(_err) => {
-                        info!("Error getting chart for {}", product);
-                    }
-                };
-                sleep(Duration::from_millis(60*1000)).await;
+                loop {
+                    let chart = fetch_chart(&product).await;
+                    match chart {
+                        Some(response) => {
+                            connection_state.product_to_chart.write().unwrap().insert(product.clone().to_string(), response);
+                        }
+                        None => {
+                            info!("Error getting chart for {}", product);
+                        }
+                    };
+                    sleep(Duration::from_millis(60 * 1000)).await;
+                }
             });
         }
     }
@@ -365,6 +355,32 @@ fn parse_tung_response_body_to_str(body: &Option<Vec<u8>>) -> Result<String, Str
     }
 }
 
+
+pub async fn fetch_chart(product: &String) -> Option<String> {
+    let now = Utc::now();
+    let end_time = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let start_time = now - Duration::from_secs(60 * 60 * 24);
+    let start_time = start_time.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let interval = String::from("m");
+    let size = String::from("0");
+    // TODO configure exchanges
+    let endpoint = format!("interval={}&product={}&start_time={}&end_time={}&size={}&exchanges=binance,crypto_com_futures,coinbase,gdax", interval, product, start_time, end_time, size);
+    // TODO reuse client
+    let client = Client::new();
+    // TODO configure url
+    let target_res = client.get(&format!("http://{}{}", "charts-dixjvfnxqqm8vmxn.coinroutes.com:7777/ohlc/?", endpoint)).send().await;
+    return match target_res{
+        Ok(response) => {
+            // TODO dont unwrap
+            let response = Some(response.text().await.unwrap());
+            response
+        }
+        Err(_err) => {
+            info!("Error getting chart for {}", product);
+            None
+        }
+    }
+}
 
 #[allow(unused_assignments)]
 pub fn subscribe_to_market_data(

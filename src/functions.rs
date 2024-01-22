@@ -35,7 +35,7 @@ use tracing::{error, info, warn};
 use crate::auth::check_token_and_authenticate;
 use crate::md_handlers::{cbbo_v1, market_depth_v1};
 use crate::routes_config::{MarketDataType, SubscriptionType, ROUTES, SUB_TYPE};
-use crate::state::ConnectionState;
+use crate::state::{ConnectionState, fetch_chart};
 use crate::subscriptions::{DirectStruct, Subscription};
 
 pub type Tx = Sender<axum::extract::ws::Message>;
@@ -557,11 +557,21 @@ pub async fn get_cached_ohlc_response(
         }
         None => {
             connection_state.subscribe_ohlc_chart(product.clone(), Arc::clone(&connection_state));
-            // Build a 404 response with a body of type `axum::http::response::Body`
-            Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .body(Body::from("Not Found"))
-                .unwrap()
+            let chart = fetch_chart(&product.clone()).await;
+            return match chart {
+                Some(chart) => {
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .body(Body::from(chart))
+                        .unwrap()
+                }
+                None => {
+                    Response::builder()
+                        .status(StatusCode::SERVICE_UNAVAILABLE)
+                        .body(Body::from("Awaiting data, please try later".to_string()))
+                        .unwrap()
+                }
+            }
         }
     };
 }
