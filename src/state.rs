@@ -60,11 +60,15 @@ pub struct ConnectionStateStruct {
     pub users: RwLock<Users>,
     pub symbols: RwLock<Symbols>,
     pub symbols_whitelist: Vec<String>,
-    pub product_to_chart: RwLock<HashMap<String, String>>,
+    pub product_to_chart: RwLock<HashMap<String, Chart>>,
 }
 
 pub type ConnectionState = Arc<ConnectionStateStruct>;
 
+struct Chart{
+    is_subscribed: bool,
+    data: Option<String>
+}
 impl ConnectionStateStruct {
     pub fn new(symbols_whitelist: Vec<String>) -> Self {
         Self {
@@ -79,19 +83,19 @@ impl ConnectionStateStruct {
 
     pub fn get_ohlc_chart(&self, product: &str) -> Option<String> {
         let product_to_chart = self.product_to_chart.read().unwrap();
-        product_to_chart.get(product).map(|chart| chart.to_string())
+        product_to_chart.get(product).map(|chart| chart.data.clone()).flatten()
     }
 
     pub fn subscribe_ohlc_chart(&self, product: String, connection_state: ConnectionState) {
-        let product_to_chart = self.product_to_chart.read().unwrap();
+        let mut product_to_chart = self.product_to_chart.write().unwrap();
         if !product_to_chart.contains_key(&product) {
-            // TODO prevent multiple concurrent tasks for the same product
+            product_to_chart.insert(product.clone(), Chart{is_subscribed: true, data: None});
             tokio::spawn(async move {
                 loop {
                     let chart = fetch_chart(&product).await;
                     match chart {
                         Some(response) => {
-                            connection_state.product_to_chart.write().unwrap().insert(product.clone().to_string(), response);
+                            connection_state.product_to_chart.write().unwrap().insert(product.clone().to_string(), Chart{is_subscribed: true, data: Some(response)});
                         }
                         None => {
                             info!("Error getting chart for {}", product);
@@ -371,9 +375,10 @@ pub async fn fetch_chart(product: &String) -> Option<String> {
     let target_res = client.get(&format!("http://{}{}", "charts-dixjvfnxqqm8vmxn.coinroutes.com:7777/ohlc/?", endpoint)).send().await;
     return match target_res{
         Ok(response) => {
-            // TODO dont unwrap
-            let response = Some(response.text().await.unwrap());
-            response
+            match response.text().await{
+                Ok(response) => Some(response),
+                Err(_) => None
+            }
         }
         Err(_err) => {
             info!("Error getting chart for {}", product);
