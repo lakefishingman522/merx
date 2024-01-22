@@ -4,7 +4,6 @@ use std::{
     sync::{Arc, RwLock},
     time::Instant,
 };
-use axum::body::Body;
 use tokio::task::JoinHandle;
 
 // use futures_channel::mpsc::{UnboundedSender};
@@ -13,9 +12,8 @@ use tokio::sync::mpsc::Sender;
 
 use axum::extract::ws::CloseFrame;
 use axum::extract::ws::Message as axum_Message;
-use axum::http::{Response, StatusCode};
 use chrono::Utc;
-use reqwest::{Client, Error};
+use reqwest::{Client};
 use tokio::time::{sleep, timeout, Duration};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, tungstenite};
@@ -369,13 +367,10 @@ pub async fn fetch_chart(product: &String, chart_uri: &String, exchanges: &Vec<S
     let start_time = start_time.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
     let interval = String::from("m");
     let size = String::from("0");
-    // TODO configure exchanges
     let exchanges_str = exchanges.join(",");
-    let endpoint = format!("interval={}&product={}&start_time={}&end_time={}&size={}&exchanges={exchanges_str}", interval, product, start_time, end_time, size);
-    // TODO reuse client
+    let endpoint = format!("interval={interval}&product={product}&start_time={start_time}&end_time={end_time}&size={size}&exchanges={exchanges_str}");
     let client = Client::new();
-    // TODO configure url
-    let target_res = client.get(&format!("http://{}{}{}", chart_uri, "/ohlc/?", endpoint)).send().await;
+    let target_res = client.get(&format!("http://{chart_uri}/ohlc/?{endpoint}")).send().await;
     return match target_res{
         Ok(response) => {
             match response.text().await{
