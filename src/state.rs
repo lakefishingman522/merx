@@ -94,7 +94,7 @@ impl ConnectionStateStruct {
             product_to_chart.insert(product.clone(), Chart{is_subscribed: true, data: None});
             tokio::spawn(async move {
                 loop {
-                    let chart = fetch_chart(&product, &chart_uri).await;
+                    let chart = fetch_chart(&product, &chart_uri, &connection_state.chart_exchanges).await;
                     match chart {
                         Some(response) => {
                             connection_state.product_to_chart.write().unwrap().insert(product.clone().to_string(), Chart{is_subscribed: true, data: Some(response)});
@@ -362,7 +362,7 @@ fn parse_tung_response_body_to_str(body: &Option<Vec<u8>>) -> Result<String, Str
 }
 
 
-pub async fn fetch_chart(product: &String, chart_uri: &String) -> Option<String> {
+pub async fn fetch_chart(product: &String, chart_uri: &String, exchanges: &Vec<String>) -> Option<String> {
     let now = Utc::now();
     let end_time = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
     let start_time = now - Duration::from_secs(60 * 60 * 24);
@@ -370,7 +370,8 @@ pub async fn fetch_chart(product: &String, chart_uri: &String) -> Option<String>
     let interval = String::from("m");
     let size = String::from("0");
     // TODO configure exchanges
-    let endpoint = format!("interval={}&product={}&start_time={}&end_time={}&size={}&exchanges=binance,crypto_com_futures,coinbase,gdax", interval, product, start_time, end_time, size);
+    let exchanges_str = exchanges.join(",");
+    let endpoint = format!("interval={}&product={}&start_time={}&end_time={}&size={}&exchanges={exchanges_str}", interval, product, start_time, end_time, size);
     // TODO reuse client
     let client = Client::new();
     // TODO configure url

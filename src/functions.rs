@@ -558,7 +558,7 @@ pub async fn get_cached_ohlc_response(
         }
         None => {
             connection_state.subscribe_ohlc_chart(product.clone(), Arc::clone(&connection_state), uris.chart_uri.clone());
-            let chart = fetch_chart(&product.clone(), &uris.chart_uri.clone()).await;
+            let chart = fetch_chart(&product.clone(), &uris.chart_uri.clone(), &connection_state.chart_exchanges).await;
             return match chart {
                 Some(chart) => {
                     Response::builder()
