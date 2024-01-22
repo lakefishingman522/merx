@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, RwLock},
     time::Instant,
 };
+use axum::body::Body;
 use tokio::task::JoinHandle;
 
 // use futures_channel::mpsc::{UnboundedSender};
@@ -12,6 +13,9 @@ use tokio::sync::mpsc::Sender;
 
 use axum::extract::ws::CloseFrame;
 use axum::extract::ws::Message as axum_Message;
+use axum::http::{Response, StatusCode};
+use chrono::Utc;
+use reqwest::Client;
 use tokio::time::{sleep, timeout, Duration};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, tungstenite};
@@ -56,6 +60,7 @@ pub struct ConnectionStateStruct {
     pub users: RwLock<Users>,
     pub symbols: RwLock<Symbols>,
     pub symbols_whitelist: Vec<String>,
+    pub product_to_chart: RwLock<HashMap<String, String>>,
 }
 
 pub type ConnectionState = Arc<ConnectionStateStruct>;
@@ -67,7 +72,40 @@ impl ConnectionStateStruct {
             subscription_count: RwLock::new(HashMap::new()),
             users: RwLock::new(Users::default()),
             symbols: RwLock::new(Symbols::default()),
+            product_to_chart: RwLock::new(HashMap::new()),
             symbols_whitelist: symbols_whitelist,
+        }
+    }
+
+    pub fn get_ohlc_chart(&self, product: &str) -> Option<String> {
+        let product_to_chart = self.product_to_chart.read().unwrap();
+        product_to_chart.get(product).map(|chart| chart.to_string())
+    }
+    pub fn subscribe_ohlc_chart(&self, product: String, connection_state: ConnectionState) {
+        let product_to_chart = self.product_to_chart.read().unwrap();
+        if !product_to_chart.contains_key(&product) {
+            // add last request timestamp
+            tokio::spawn(async move {
+                let now = Utc::now();
+                let end_time = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+                let start_time = now - Duration::from_secs(60 * 60 * 24);
+                let start_time = start_time.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+                let interval = String::from("m");
+                let size = String::from("0");
+                let endpoint = format!("interval={}&product={}&start_time={}&end_time={}&size={}&exchanges=binance,crypto_com_futures,coinbase,gdax", interval, product, start_time, end_time, size);
+                let client = Client::new();
+                let target_res = client.get(&format!("http://{}{}", "charts-dixjvfnxqqm8vmxn.coinroutes.com:7777/ohlc/?", endpoint)).send().await;
+                match target_res {
+                    Ok(response) => {
+                        let response = Some(response.text().await.unwrap());
+                        connection_state.product_to_chart.write().unwrap().insert(product.clone().to_string(), response.unwrap());
+                    }
+                    Err(_err) => {
+                        info!("Error getting chart for {}", product);
+                    }
+                };
+                sleep(Duration::from_millis(60*1000)).await;
+            });
         }
     }
 
@@ -322,6 +360,7 @@ fn parse_tung_response_body_to_str(body: &Option<Vec<u8>>) -> Result<String, Str
         None => Err("Empty body".to_string()),
     }
 }
+
 
 #[allow(unused_assignments)]
 pub fn subscribe_to_market_data(
