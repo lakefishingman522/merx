@@ -37,7 +37,7 @@ struct Args {
     cbag_uri: String,
 
     /// the uri for the chart api.
-    #[argh(option, default = "String::from(\"none\")")]
+    #[argh(option, default = "String::from(\"charts-dixjvfnxqqm8vmxn.coinroutes.com:7777\")")]
     chart_uri: String,
 
     /// the uri for the cbag. Can be cbag load balancer
@@ -68,8 +68,8 @@ struct Args {
     #[argh(option, default = "String::from(\"\")")]
     product_whitelist: String,
 
-    /// auth token used to pull currency pairs. This is a token that can be authenticated on portal
-    #[argh(option, default = "String::from(\"\")")]
+    /// exchange to use for charting
+    #[argh(option, default = "String::from(\"krakenfutures,binance,bitstamp,gemini,kraken,huobipro,binancefutures,deribit,kucoin,gdax,okex\")")]
     chart_exchanges: String,
 }
 
