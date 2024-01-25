@@ -544,6 +544,13 @@ pub async fn get_cached_ohlc_response(
     }
 
     let product = params.get("product").expect("product is required");
+    if let Err(err) = connection_state.is_pair_valid(product){
+        return Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Body::from(err.to_json_str()))
+            .unwrap();
+    }
+
     let chart = connection_state.get_ohlc_chart(product.as_str());
 
     return match chart {
