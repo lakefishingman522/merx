@@ -59,13 +59,12 @@ pub struct ConnectionStateStruct {
     pub symbols: RwLock<Symbols>,
     pub symbols_whitelist: Vec<String>,
     pub chart_exchanges: Vec<String>,
-    pub product_to_chart: RwLock<HashMap<String, Chart>>,
+    product_to_chart: RwLock<HashMap<String, Chart>>,
 }
 
 pub type ConnectionState = Arc<ConnectionStateStruct>;
 
 struct Chart{
-    is_subscribed: bool,
     data: Option<String>
 }
 impl ConnectionStateStruct {
@@ -89,14 +88,14 @@ impl ConnectionStateStruct {
     pub fn subscribe_ohlc_chart(&self, product: String, connection_state: ConnectionState, chart_uri: String) {
         let mut product_to_chart = self.product_to_chart.write().unwrap();
         if !product_to_chart.contains_key(&product) {
-            product_to_chart.insert(product.clone(), Chart{is_subscribed: true, data: None});
+            product_to_chart.insert(product.clone(), Chart{data: None});
             tokio::spawn(async move {
                 loop {
                     // TODO consider cleaning up the task based on a LastRequested field in the Chart struct
                     let chart = fetch_chart(product.as_str(), chart_uri.as_str(), &connection_state.chart_exchanges).await;
                     match chart {
                         Some(response) => {
-                            connection_state.product_to_chart.write().unwrap().insert(product.clone().to_string(), Chart{is_subscribed: true, data: Some(response)});
+                            connection_state.product_to_chart.write().unwrap().insert(product.clone().to_string(), Chart{data: Some(response)});
                         }
                         None => {
                             info!("Error getting chart for {}", product);

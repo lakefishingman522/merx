@@ -534,10 +534,7 @@ pub async fn get_cached_response(
 pub async fn get_cached_ohlc_response(
     State(connection_state): State<ConnectionState>,
     Extension(uris): Extension<URIs>,
-    // OriginalUri(original_uri): OriginalUri,
-    headers: HeaderMap,
     Query(params): Query<HashMap<String, String>>,
-    req: Request<Body>,
 ) -> impl IntoResponse {
     if !params.contains_key("product")  {
         return Response::builder()
