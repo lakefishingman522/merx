@@ -92,7 +92,8 @@ impl ConnectionStateStruct {
             product_to_chart.insert(product.clone(), Chart{is_subscribed: true, data: None});
             tokio::spawn(async move {
                 loop {
-                    let chart = fetch_chart(&product, &chart_uri, &connection_state.chart_exchanges).await;
+                    // TODO consider cleaning up the task based on a LastRequested field in the Chart struct
+                    let chart = fetch_chart(product.as_str(), chart_uri.as_str(), &connection_state.chart_exchanges).await;
                     match chart {
                         Some(response) => {
                             connection_state.product_to_chart.write().unwrap().insert(product.clone().to_string(), Chart{is_subscribed: true, data: Some(response)});
@@ -360,7 +361,7 @@ fn parse_tung_response_body_to_str(body: &Option<Vec<u8>>) -> Result<String, Str
 }
 
 
-pub async fn fetch_chart(product: &String, chart_uri: &String, exchanges: &Vec<String>) -> Option<String> {
+pub async fn fetch_chart(product: &str, chart_uri: &str, exchanges: &Vec<String>) -> Option<String> {
     let now = Utc::now();
     let end_time = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
     let start_time = now - Duration::from_secs(60 * 60 * 24);

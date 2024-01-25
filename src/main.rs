@@ -92,7 +92,7 @@ async fn main() {
         panic!("cbag-uri is required")
     }
     if args.chart_uri == "none" {
-        panic!("cbag-uri is required")
+        panic!("chart-uri is required")
     }
     if args.auth_uri == "none" {
         panic!("auth-uri is required")
