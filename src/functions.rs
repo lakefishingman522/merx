@@ -581,3 +581,48 @@ pub async fn get_cached_ohlc_response(
     };
 }
 
+pub async fn volume(
+    State(connection_state): State<ConnectionState>,
+    Extension(uris): Extension<URIs>,
+    // OriginalUri(original_uri): OriginalUri,
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let query_params = params.clone();
+    match check_token_and_authenticate(
+        &headers,
+        &Query(params),
+        &uris.auth_uri,
+        connection_state.clone(),
+    )
+    .await
+    {
+        Ok(_) => {
+            let endpoint = "http://internal-prod-trades-1508945914.us-east-1.elb.amazonaws.com:7777/volume?";
+            let mut url = url::Url::parse(endpoint).expect("Invalid base URL");
+            
+            for (key, value) in &query_params {
+                url.query_pairs_mut().append_pair(key, value);
+            }
+
+            let client = reqwest::Client::new();
+            let res = client.get(url).send().await;
+            if let Ok(response) = res {
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header("content-type", "application/json")
+                    .body(Body::from(response.text().await.unwrap()))
+                    .unwrap()
+            } else {
+                Response::builder()
+                    .status(StatusCode::SERVICE_UNAVAILABLE)
+                    .body(Body::from("Awaiting data, please try later".to_string()))
+                    .unwrap()
+            }
+        }
+        Err(_) => Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Body::from("Unauthorized".to_string()))
+            .unwrap(),
+    }
+}
