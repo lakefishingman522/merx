@@ -40,6 +40,10 @@ struct Args {
     #[argh(option, default = "String::from(\"charts-dixjvfnxqqm8vmxn.coinroutes.com:7777\")")]
     chart_uri: String,
 
+    /// the uri for the trades api.
+    #[argh(option, default = "String::from(\"internal-prod-trades-1508945914.us-east-1.elb.amazonaws.com:7777\")")]
+    trades_uri: String,
+
     /// the uri for the cbag. Can be cbag load balancer
     #[argh(option, default = "String::from(\"none\")")]
     cbag_depth_uri: String,
@@ -94,6 +98,9 @@ async fn main() {
     if args.chart_uri == "none" {
         panic!("chart-uri is required")
     }
+    if args.trades_uri == "none" {
+        panic!("trades-uri is required")
+    }
     if args.auth_uri == "none" {
         panic!("auth-uri is required")
     }
@@ -110,6 +117,7 @@ async fn main() {
             args.cbag_depth_uri.clone()
         },
         chart_uri: args.chart_uri.clone(),
+        trades_uri: args.trades_uri.clone(),
     };
 
     let whitelist = args
