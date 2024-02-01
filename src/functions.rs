@@ -53,6 +53,7 @@ pub struct URIs {
     pub cbag_depth_uri: String,
     pub auth_uri: String,
     pub chart_uri: String,
+    pub trades_uri: String,
 }
 
 pub async fn fallback(uri: Uri, OriginalUri(original_uri): OriginalUri) -> (StatusCode, String) {
@@ -588,20 +589,20 @@ pub async fn volume(
     headers: HeaderMap,
     Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
-    let query_params = params.clone();
     match check_token_and_authenticate(
         &headers,
-        &Query(params),
+        &Query(params.clone()),
         &uris.auth_uri,
         connection_state.clone(),
     )
     .await
     {
         Ok(_) => {
-            let endpoint = "http://internal-prod-trades-1508945914.us-east-1.elb.amazonaws.com:7777/volume?";
-            let mut url = url::Url::parse(endpoint).expect("Invalid base URL");
+            let uri = uris.trades_uri.clone();
+            let endpoint = "volume".to_string();
+            let mut url = url::Url::parse(&format!("http://{uri}/{endpoint}?")).expect("Invalid base URL");
             
-            for (key, value) in &query_params {
+            for (key, value) in &params {
                 url.query_pairs_mut().append_pair(key, value);
             }
 
