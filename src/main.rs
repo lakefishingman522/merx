@@ -22,8 +22,8 @@ use tracing_subscriber::EnvFilter;
 
 use merx::art::log_merx_title;
 use merx::functions::{
-    authenticate_user, axum_ws_handler, fallback, forward_request, get_cached_response, get_state,
-    get_cached_ohlc_response, root, URIs, volume,
+    authenticate_user, axum_ws_handler, fallback, forward_request, get_cached_ohlc_response,
+    get_cached_response, get_chart, get_state, root, volume, URIs,
 };
 use merx::md_handlers::rest_cost_calculator_v1;
 use merx::state::ConnectionStateStruct;
@@ -37,11 +37,17 @@ struct Args {
     cbag_uri: String,
 
     /// the uri for the chart api.
-    #[argh(option, default = "String::from(\"charts-dixjvfnxqqm8vmxn.coinroutes.com:7777\")")]
+    #[argh(
+        option,
+        default = "String::from(\"charts-dixjvfnxqqm8vmxn.coinroutes.com:7777\")"
+    )]
     chart_uri: String,
 
     /// the uri for the trades api.
-    #[argh(option, default = "String::from(\"internal-prod-trades-1508945914.us-east-1.elb.amazonaws.com:7777\")")]
+    #[argh(
+        option,
+        default = "String::from(\"internal-prod-trades-1508945914.us-east-1.elb.amazonaws.com:7777\")"
+    )]
     trades_uri: String,
 
     /// the uri for the cbag. Can be cbag load balancer
@@ -73,7 +79,10 @@ struct Args {
     product_whitelist: String,
 
     /// exchange to use for charting
-    #[argh(option, default = "String::from(\"krakenfutures,binance,bitstamp,gemini,kraken,huobipro,binancefutures,deribit,kucoin,gdax,okex\")")]
+    #[argh(
+        option,
+        default = "String::from(\"krakenfutures,binance,bitstamp,gemini,kraken,huobipro,binancefutures,deribit,kucoin,gdax,okex\")"
+    )]
     chart_exchanges: String,
 }
 
@@ -159,6 +168,7 @@ async fn main() {
         .route("/version", get(forward_request))
         .route("/state", get(get_state))
         .route("/volume", get(volume))
+        .route("/chart", get(get_chart))
         .route("/authenticate_user", get(authenticate_user))
         .route("/api/currency_pairs", get(get_cached_response))
         .route("/api/currency_pairs/", get(get_cached_response))

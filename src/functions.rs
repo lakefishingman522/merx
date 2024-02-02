@@ -35,7 +35,7 @@ use tracing::{error, info, warn};
 use crate::auth::check_token_and_authenticate;
 use crate::md_handlers::{cbbo_v1, market_depth_v1};
 use crate::routes_config::{MarketDataType, SubscriptionType, ROUTES, SUB_TYPE};
-use crate::state::{ConnectionState, fetch_chart};
+use crate::state::{fetch_chart, ConnectionState};
 use crate::subscriptions::{DirectStruct, Subscription};
 
 pub type Tx = Sender<axum::extract::ws::Message>;
@@ -537,7 +537,7 @@ pub async fn get_cached_ohlc_response(
     Extension(uris): Extension<URIs>,
     Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
-    if !params.contains_key("product")  {
+    if !params.contains_key("product") {
         return Response::builder()
             .status(StatusCode::BAD_REQUEST)
             .body(Body::from("product is required".to_string()))
@@ -545,7 +545,7 @@ pub async fn get_cached_ohlc_response(
     }
 
     let product = params.get("product").expect("product is required");
-    if let Err(err) = connection_state.is_pair_valid(product){
+    if let Err(err) = connection_state.is_pair_valid(product) {
         return Response::builder()
             .status(StatusCode::BAD_REQUEST)
             .body(Body::from(err.to_json_str()))
@@ -555,29 +555,32 @@ pub async fn get_cached_ohlc_response(
     let chart = connection_state.get_ohlc_chart(product.as_str());
 
     return match chart {
-        Some(chart) => {
-            Response::builder()
-                .status(StatusCode::OK)
-                .body(Body::from(chart))
-                .unwrap()
-        }
+        Some(chart) => Response::builder()
+            .status(StatusCode::OK)
+            .body(Body::from(chart))
+            .unwrap(),
         None => {
-            connection_state.subscribe_ohlc_chart(product.clone(), Arc::clone(&connection_state), uris.chart_uri.clone());
-            let chart = fetch_chart(product.as_str(), uris.chart_uri.as_str(), &connection_state.chart_exchanges).await;
+            connection_state.subscribe_ohlc_chart(
+                product.clone(),
+                Arc::clone(&connection_state),
+                uris.chart_uri.clone(),
+            );
+            let chart = fetch_chart(
+                product.as_str(),
+                uris.chart_uri.as_str(),
+                &connection_state.chart_exchanges,
+            )
+            .await;
             return match chart {
-                Some(chart) => {
-                    Response::builder()
-                        .status(StatusCode::OK)
-                        .body(Body::from(chart))
-                        .unwrap()
-                }
-                None => {
-                    Response::builder()
-                        .status(StatusCode::SERVICE_UNAVAILABLE)
-                        .body(Body::from("Awaiting data, please try later".to_string()))
-                        .unwrap()
-                }
-            }
+                Some(chart) => Response::builder()
+                    .status(StatusCode::OK)
+                    .body(Body::from(chart))
+                    .unwrap(),
+                None => Response::builder()
+                    .status(StatusCode::SERVICE_UNAVAILABLE)
+                    .body(Body::from("Awaiting data, please try later".to_string()))
+                    .unwrap(),
+            };
         }
     };
 }
@@ -600,14 +603,81 @@ pub async fn volume(
         Ok(_) => {
             let uri = uris.trades_uri.clone();
             let endpoint = "volume".to_string();
-            let mut url = url::Url::parse(&format!("http://{uri}/{endpoint}?")).expect("Invalid base URL");
-            
+            let mut url =
+                url::Url::parse(&format!("http://{uri}/{endpoint}?")).expect("Invalid base URL");
+
             for (key, value) in &params {
                 url.query_pairs_mut().append_pair(key, value);
             }
 
             let client = reqwest::Client::new();
             let res = client.get(url).send().await;
+            if let Ok(response) = res {
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header("content-type", "application/json")
+                    .body(Body::from(response.text().await.unwrap()))
+                    .unwrap()
+            } else {
+                Response::builder()
+                    .status(StatusCode::SERVICE_UNAVAILABLE)
+                    .body(Body::from("Awaiting data, please try later".to_string()))
+                    .unwrap()
+            }
+        }
+        Err(_) => Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Body::from("Unauthorized".to_string()))
+            .unwrap(),
+    }
+}
+
+pub async fn get_chart(
+    State(connection_state): State<ConnectionState>,
+    Extension(uris): Extension<URIs>,
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    match check_token_and_authenticate(
+        &headers,
+        &Query(params.clone()),
+        &uris.auth_uri,
+        connection_state.clone(),
+    )
+    .await
+    {
+        Ok(_) => {
+            // Validate required keys
+            let required_keys = vec![
+                "interval",
+                "product",
+                "start_time",
+                "end_time",
+                "size",
+                "exchanges",
+            ];
+
+            for key in &required_keys {
+                if !params.contains_key(*key) {
+                    return Response::builder()
+                        .status(StatusCode::BAD_REQUEST)
+                        .body(Body::from(format!("{} is required", key)))
+                        .unwrap();
+                }
+            }
+
+            let endpoint = "ohlc".to_string(); // assuming "ohlc" is the endpoint being used
+            let base_url = format!("http://{}", uris.chart_uri.clone()); // assuming this is the base URL
+
+            let mut url = url::Url::parse(&format!("{}/{}", base_url, endpoint)).unwrap();
+
+            for (key, value) in &params {
+                url.query_pairs_mut().append_pair(key, value);
+            }
+
+            let client = reqwest::Client::new();
+            let res = client.get(url).send().await;
+
             if let Ok(response) = res {
                 Response::builder()
                     .status(StatusCode::OK)
