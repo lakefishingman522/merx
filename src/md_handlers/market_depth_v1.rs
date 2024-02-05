@@ -144,17 +144,28 @@ pub fn handle_subscription(
         }
     };
 
-    let depth_limit = match parsed_sub_msg.depth_limit {
-        Some(depth_limit) => depth_limit.to_string(),
-        None => String::from("50"),
+    let depth_limit = if username == "PUBLIC" {
+        String::from("200")
+    } else {
+        match parsed_sub_msg.depth_limit {
+            Some(depth_limit) => depth_limit.to_string(),
+            None => String::from("50"),
+        }
     };
+
+    let interval_ms: u32;
+    if username == "PUBLIC" {
+        interval_ms = 60_000; // The 60 * 1000 can be directly written as 60_000 to make it easier to read
+    } else {
+        interval_ms = 300;
+    }
 
     let subscription = Subscription::Snapshot(SnapshotStruct::new(
         market_data_type,
         parsed_sub_msg.currency_pair,
         cbag_markets,
         depth_limit.parse::<u32>().unwrap(),
-        300,
+        interval_ms,
     ));
 
     match connection_state.add_client_to_subscription(
