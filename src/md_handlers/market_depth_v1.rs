@@ -1,5 +1,5 @@
 use crate::error::{ErrorCode, MerxErrorResponse};
-use crate::md_handlers::helper::cbag_market_to_exchange;
+use crate::md_handlers::helper::{cbag_market_to_exchange, exchange_to_cbag_market};
 use crate::subscriptions::{SnapshotStruct, Subscription};
 use crate::{routes_config::MarketDataType, state::ConnectionState};
 // use futures_channel::mpsc::Sender;
@@ -45,6 +45,9 @@ pub fn handle_subscription(
     username: &str,
     market_data_id: Option<String>,
 ) {
+    if let Some(id) = &market_data_id {
+        println!("{}", id);
+    }
     //check that state is ready
     if !connection_state.is_ready() {
         match sender.try_send(axum::extract::ws::Message::Text(
@@ -125,22 +128,39 @@ pub fn handle_subscription(
         return;
     }
 
-    let cbag_markets = match connection_state.validate_exchanges_vector(
-        username,
-        &parsed_sub_msg.exchanges,
-        market_data_id,
-    ) {
-        Ok(cbag_markets) => cbag_markets,
-        Err(merx_error_response) => {
-            match sender.try_send(axum::extract::ws::Message::Text(
-                merx_error_response.to_json_str(),
-            )) {
-                Ok(_) => {}
-                Err(_try_send_error) => {
-                    // warn!("Buffer probably full.");
-                }
-            };
-            return;
+    let cbag_markets = if username == "PUBLIC" {
+        connection_state
+            .chart_exchanges
+            .clone()
+            .iter()
+            .map(|exchange| {
+                exchange_to_cbag_market(
+                    exchange, "",    // client_id
+                    false, // non_agg_prices
+                    false, // customer_specific
+                    true,  // _public
+                    None,  // market_data_id
+                )
+            })
+            .collect()
+    } else {
+        match connection_state.validate_exchanges_vector(
+            username,
+            &parsed_sub_msg.exchanges,
+            market_data_id,
+        ) {
+            Ok(cbag_markets) => cbag_markets,
+            Err(merx_error_response) => {
+                match sender.try_send(axum::extract::ws::Message::Text(
+                    merx_error_response.to_json_str(),
+                )) {
+                    Ok(_) => {}
+                    Err(_try_send_error) => {
+                        // warn!("Buffer probably full.");
+                    }
+                };
+                return;
+            }
         }
     };
 
