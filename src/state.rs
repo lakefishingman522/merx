@@ -256,14 +256,31 @@ impl ConnectionStateStruct {
         }
 
         // and from the count
+        let count = subscription_count.get(&client_address).map(|c| *c);
         subscription_count.remove(&client_address);
-
-        let client_ip = client_address.ip(); // extract the IP
         info!(
-            "Removing the subscription ip count for {} as it is 0",
-            &client_ip
+            "Removing the subscription count for {} as it is 0",
+            client_address
         );
-        subscription_ip_count.remove(&client_ip);
+
+        // regarding ip count, decrese count of clientaddress
+        let client_ip = client_address.ip(); // extract the IP
+        if let Some(ip_count) = subscription_ip_count.get_mut(&client_ip) {
+            match count {
+                Some(count) => {
+                    // count is of type u32, so no need to dereference it.
+                    if *ip_count > count {
+                        *ip_count -= count;
+                    } else {
+                        subscription_ip_count.remove(&client_ip);
+                        info!("Removing the subscription ip count for {}", &client_ip);
+                    }
+                }
+                None => {
+                    error!("Count is None");
+                }
+            }
+        }
     }
 
     pub fn is_client_still_active(&self, &client_address: &SocketAddr) -> bool {
@@ -532,14 +549,21 @@ pub fn subscribe_to_market_data(
                 for (client_address, _) in client_subscriptions.iter() {
                     let client_ip = client_address.ip(); // extract the IP
 
-                    if let Some(count) = locked_subscription_ip_count.get_mut(&client_ip) {
-                        *count -= 1;
-                        if *count == 0 {
-                            locked_subscription_ip_count.remove(&client_ip);
-                            info!(
-                                "Removing the subscription ip count for {} as it is 0",
-                                &client_ip
-                            );
+                    if let Some(count) = locked_subscription_count.get(&client_address) {
+                        if let Some(ip_count) = locked_subscription_ip_count.get_mut(&client_ip) {
+                            if *ip_count > *count {
+                                *ip_count -= *count;
+                            } else {
+                                *ip_count = 0;
+                            }
+
+                            if *ip_count == 0 {
+                                locked_subscription_ip_count.remove(&client_ip);
+                                info!(
+                                    "Removing the subscription ip count for {} as it is 0",
+                                    &client_ip
+                                );
+                            }
                         }
                     }
                 }
