@@ -32,3 +32,13 @@ pub static SUB_TYPE: phf::Map<&'static str, SubscriptionType> = phf_map! {
     "/api/cost_calculator" => SubscriptionType::AuthenticatedRest,
     "/api/public/streaming/cbbo" => SubscriptionType::PublicSubscription,
 };
+
+pub enum WebSocketLimitType {
+    IP,
+    Token,
+}
+
+pub static WS_LIMIT_ROUTES: phf::Map<&'static str, WebSocketLimitType> = phf_map! {
+    "/api/streaming/cbbo" => WebSocketLimitType::IP,
+    "/api/streaming/market_depth"=>WebSocketLimitType::Token,
+};
