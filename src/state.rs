@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     sync::{Arc, RwLock},
     time::Instant,
 };
@@ -13,7 +13,7 @@ use tokio::sync::mpsc::Sender;
 use axum::extract::ws::CloseFrame;
 use axum::extract::ws::Message as axum_Message;
 use chrono::Utc;
-use reqwest::{Client};
+use reqwest::Client;
 use tokio::time::{sleep, timeout, Duration};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::{connect_async, tungstenite};
@@ -32,6 +32,7 @@ pub type Tx = Sender<axum::extract::ws::Message>;
 
 pub type SubscriptionState = HashMap<Subscription, HashMap<SocketAddr, Tx>>;
 pub type SubscriptionCount = HashMap<SocketAddr, u32>;
+pub type SubscriptionIPCount = HashMap<IpAddr, u32>;
 
 // helper function for conversions from tungstenite message to axum message
 fn from_tungstenite(message: Message) -> Option<axum::extract::ws::Message> {
@@ -55,6 +56,7 @@ fn from_tungstenite(message: Message) -> Option<axum::extract::ws::Message> {
 pub struct ConnectionStateStruct {
     pub subscription_state: RwLock<SubscriptionState>,
     pub subscription_count: RwLock<SubscriptionCount>,
+    pub subscription_ip_count: RwLock<SubscriptionIPCount>,
     pub users: RwLock<Users>,
     pub symbols: RwLock<Symbols>,
     pub symbols_whitelist: Vec<String>,
@@ -64,38 +66,57 @@ pub struct ConnectionStateStruct {
 
 pub type ConnectionState = Arc<ConnectionStateStruct>;
 
-struct Chart{
-    data: Option<String>
+struct Chart {
+    data: Option<String>,
 }
 impl ConnectionStateStruct {
     pub fn new(symbols_whitelist: Vec<String>, chart_exchanges: Vec<String>) -> Self {
         Self {
             subscription_state: RwLock::new(HashMap::new()),
             subscription_count: RwLock::new(HashMap::new()),
+            subscription_ip_count: RwLock::new(HashMap::new()),
             users: RwLock::new(Users::default()),
             symbols: RwLock::new(Symbols::default()),
             product_to_chart: RwLock::new(HashMap::new()),
             symbols_whitelist: symbols_whitelist,
-            chart_exchanges: chart_exchanges
+            chart_exchanges: chart_exchanges,
         }
     }
 
     pub fn get_ohlc_chart(&self, product: &str) -> Option<String> {
         let product_to_chart = self.product_to_chart.read().unwrap();
-        product_to_chart.get(product).map(|chart| chart.data.clone()).flatten()
+        product_to_chart
+            .get(product)
+            .map(|chart| chart.data.clone())
+            .flatten()
     }
 
-    pub fn subscribe_ohlc_chart(&self, product: String, connection_state: ConnectionState, chart_uri: String) {
+    pub fn subscribe_ohlc_chart(
+        &self,
+        product: String,
+        connection_state: ConnectionState,
+        chart_uri: String,
+    ) {
         let mut product_to_chart = self.product_to_chart.write().unwrap();
         if !product_to_chart.contains_key(&product) {
-            product_to_chart.insert(product.clone(), Chart{data: None});
+            product_to_chart.insert(product.clone(), Chart { data: None });
             tokio::spawn(async move {
                 loop {
                     // TODO consider cleaning up the task based on a LastRequested field in the Chart struct
-                    let chart = fetch_chart(product.as_str(), chart_uri.as_str(), &connection_state.chart_exchanges).await;
+                    let chart = fetch_chart(
+                        product.as_str(),
+                        chart_uri.as_str(),
+                        &connection_state.chart_exchanges,
+                    )
+                    .await;
                     match chart {
                         Some(response) => {
-                            connection_state.product_to_chart.write().unwrap().insert(product.clone().to_string(), Chart{data: Some(response)});
+                            connection_state.product_to_chart.write().unwrap().insert(
+                                product.clone().to_string(),
+                                Chart {
+                                    data: Some(response),
+                                },
+                            );
                         }
                         None => {
                             info!("Error getting chart for {}", product);
@@ -127,6 +148,7 @@ impl ConnectionStateStruct {
         {
             let mut subscription_state = self.subscription_state.write().unwrap();
             let mut subscription_count = self.subscription_count.write().unwrap();
+            let mut subscription_ip_count = self.subscription_ip_count.write().unwrap();
 
             already_subscribed = subscription_state.contains_key(&subscription);
 
@@ -147,6 +169,18 @@ impl ConnectionStateStruct {
             } else {
                 subscription_count.insert(*client_address, 1);
             }
+
+            // increment subscription ip count
+            let client_ip = client_address.ip(); // extract the IP
+            if let Some(ip_count) = subscription_ip_count.get_mut(&client_ip) {
+                info!(
+                    "Adding the subscription ip count for {}, it was {}",
+                    &client_ip, ip_count
+                );
+                *ip_count += 1;
+            } else {
+                subscription_ip_count.insert(client_ip, 1);
+            }
         }
         let elapsed = now.elapsed();
         info!("Adding client to subscription took {:?}", elapsed);
@@ -163,6 +197,7 @@ impl ConnectionStateStruct {
     ) -> Result<(), String> {
         let mut subscription_state = self.subscription_state.write().unwrap();
         let mut subscription_count = self.subscription_count.write().unwrap();
+        let mut subscription_ip_count = self.subscription_ip_count.write().unwrap();
 
         if let Some(subscription_clients) = subscription_state.get_mut(subscription) {
             if subscription_clients.contains_key(client_address) {
@@ -180,10 +215,29 @@ impl ConnectionStateStruct {
         } else {
             return Err("Client not subscribed to any subscriptions".to_string());
         }
+        let client_ip = client_address.ip(); // extract the IP
+        if let Some(count) = subscription_ip_count.get_mut(&client_ip) {
+            if *count > 0 {
+                *count -= 1;
+            } else {
+                return Err("Count has already reached zero for this client".to_string());
+            }
+        } else {
+            return Err("Client not subscribed to any subscriptions".to_string());
+        }
 
         // remove client from subscription count if count is 0
         if subscription_count.get(client_address).unwrap() == &0 {
             subscription_count.remove(client_address);
+        }
+
+        // remove client from subscription ip count if count is 0
+        if subscription_ip_count.get(&client_ip).unwrap() == &0 {
+            info!(
+                "Removing the subscription ip count for {} as it is 0",
+                &client_ip
+            );
+            subscription_ip_count.remove(&client_ip);
         }
 
         Ok(())
@@ -192,6 +246,7 @@ impl ConnectionStateStruct {
     pub fn remove_client_from_state(&self, &client_address: &SocketAddr) {
         let mut subscription_state = self.subscription_state.write().unwrap();
         let mut subscription_count = self.subscription_count.write().unwrap();
+        let mut subscription_ip_count = self.subscription_ip_count.write().unwrap();
 
         // remove client from subscription state
         for (_, subscription_clients) in subscription_state.iter_mut() {
@@ -202,6 +257,13 @@ impl ConnectionStateStruct {
 
         // and from the count
         subscription_count.remove(&client_address);
+
+        let client_ip = client_address.ip(); // extract the IP
+        info!(
+            "Removing the subscription ip count for {} as it is 0",
+            &client_ip
+        );
+        subscription_ip_count.remove(&client_ip);
     }
 
     pub fn is_client_still_active(&self, &client_address: &SocketAddr) -> bool {
@@ -359,8 +421,11 @@ fn parse_tung_response_body_to_str(body: &Option<Vec<u8>>) -> Result<String, Str
     }
 }
 
-
-pub async fn fetch_chart(product: &str, chart_uri: &str, exchanges: &Vec<String>) -> Option<String> {
+pub async fn fetch_chart(
+    product: &str,
+    chart_uri: &str,
+    exchanges: &Vec<String>,
+) -> Option<String> {
     let now = Utc::now();
     let end_time = now.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
     let start_time = now - Duration::from_secs(60 * 60 * 24);
@@ -370,19 +435,20 @@ pub async fn fetch_chart(product: &str, chart_uri: &str, exchanges: &Vec<String>
     let exchanges_str = exchanges.join(",");
     let endpoint = format!("interval={interval}&product={product}&start_time={start_time}&end_time={end_time}&size={size}&exchanges={exchanges_str}");
     let client = Client::new();
-    let target_res = client.get(&format!("http://{chart_uri}/ohlc/?{endpoint}")).send().await;
-    return match target_res{
-        Ok(response) => {
-            match response.text().await{
-                Ok(response) => Some(response),
-                Err(_) => None
-            }
-        }
+    let target_res = client
+        .get(&format!("http://{chart_uri}/ohlc/?{endpoint}"))
+        .send()
+        .await;
+    return match target_res {
+        Ok(response) => match response.text().await {
+            Ok(response) => Some(response),
+            Err(_) => None,
+        },
         Err(_err) => {
             info!("Error getting chart for {}", product);
             None
         }
-    }
+    };
 }
 
 #[allow(unused_assignments)]
@@ -417,6 +483,8 @@ pub fn subscribe_to_market_data(
                     connection_state.subscription_state.write().unwrap(); //TODO: maybe only need a read lock when sending out the messages
                 let mut locked_subscription_count =
                     connection_state.subscription_count.write().unwrap();
+                let mut locked_subscription_ip_count =
+                    connection_state.subscription_ip_count.write().unwrap();
                 let listener_hash_map = locked_subscription_state.get(&subscription);
                 let active_listeners = match listener_hash_map {
                     Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
@@ -426,7 +494,7 @@ pub fn subscribe_to_market_data(
                         break;
                     }
                 };
-                // warn!("Disconnecting clients {}", active_listeners.len());
+                warn!("Disconnecting clients {}", active_listeners.len());
                 //TODO: send something about the subscription here if it wasn't valid
                 for recp in active_listeners {
                     // let clients know the subscription was invalid
@@ -455,6 +523,22 @@ pub fn subscribe_to_market_data(
                             info!(
                                 "Removing the subscription count for {} as it is 0",
                                 client_address
+                            );
+                        }
+                    }
+                }
+
+                // clean up subscription ip counts for those clients who were connected for this subscription
+                for (client_address, _) in client_subscriptions.iter() {
+                    let client_ip = client_address.ip(); // extract the IP
+
+                    if let Some(count) = locked_subscription_ip_count.get_mut(&client_ip) {
+                        *count -= 1;
+                        if *count == 0 {
+                            locked_subscription_ip_count.remove(&client_ip);
+                            info!(
+                                "Removing the subscription ip count for {} as it is 0",
+                                &client_ip
                             );
                         }
                     }
