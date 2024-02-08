@@ -359,7 +359,7 @@ impl ConnectionStateStruct {
                     }
                 }
                 None => {
-                    error!("Count is None");
+                    warn!("Count is None");
                 }
             }
         }
