@@ -22,7 +22,7 @@ use tracing::{error, info, warn};
 use crate::{
     error::{ErrorCode, MerxErrorResponse},
     md_handlers::{cbbo_v1, market_depth_v1},
-    routes_config::MarketDataType,
+    routes_config::{MarketDataType, WebSocketLimitType},
     subscriptions::{SubTraits, Subscription},
     symbols::Symbols,
     user::{UserResponse, Users},
@@ -142,6 +142,7 @@ impl ConnectionStateStruct {
         cbag_uri: String,
         sender: Tx,
         connection_state: ConnectionState,
+        websocketlimit_type: &WebSocketLimitType,
     ) -> Result<(), MerxErrorResponse> {
         let now = Instant::now();
         let already_subscribed: bool;

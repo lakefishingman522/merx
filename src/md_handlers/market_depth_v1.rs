@@ -1,7 +1,10 @@
 use crate::error::{ErrorCode, MerxErrorResponse};
 use crate::md_handlers::helper::cbag_market_to_exchange;
 use crate::subscriptions::{SnapshotStruct, Subscription};
-use crate::{routes_config::MarketDataType, state::ConnectionState};
+use crate::{
+    routes_config::{MarketDataType, WebSocketLimitType},
+    state::ConnectionState,
+};
 // use futures_channel::mpsc::Sender;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -44,6 +47,7 @@ pub fn handle_subscription(
     market_data_type: MarketDataType,
     username: &str,
     market_data_id: Option<String>,
+    websocketlimit_type: &WebSocketLimitType,
 ) {
     //check that state is ready
     if !connection_state.is_ready() {
@@ -163,6 +167,7 @@ pub fn handle_subscription(
         cbag_uri,
         sender.clone(),
         Arc::clone(connection_state),
+        websocketlimit_type,
     ) {
         Ok(_) => {}
         Err(merx_error_response) => {

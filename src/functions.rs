@@ -34,7 +34,9 @@ use tracing::{error, info, warn};
 
 use crate::auth::check_token_and_authenticate;
 use crate::md_handlers::{cbbo_v1, market_depth_v1};
-use crate::routes_config::{MarketDataType, SubscriptionType, ROUTES, SUB_TYPE};
+use crate::routes_config::{
+    MarketDataType, SubscriptionType, WebSocketLimitType, ROUTES, SUB_TYPE, WS_LIMIT_ROUTES,
+};
 use crate::state::{fetch_chart, ConnectionState};
 use crate::subscriptions::{DirectStruct, Subscription};
 
@@ -137,6 +139,7 @@ pub async fn axum_ws_handler(
         //TODO
     }
     let subscription_type = SUB_TYPE.get(base_route).unwrap();
+    let websocketlimit_type = WS_LIMIT_ROUTES.get(base_route).unwrap();
 
     let auth_uri = uris.auth_uri.clone();
     let uris_clone = uris.clone();
@@ -175,6 +178,7 @@ pub async fn axum_ws_handler(
             uris_clone,
             route,
             subscription_type,
+            websocketlimit_type,
             username,
             market_data_id,
         )
@@ -191,6 +195,7 @@ async fn axum_handle_socket(
     uris: URIs,
     market_data_type: &MarketDataType,
     subscription_type: &SubscriptionType,
+    websocketlimit_type: &WebSocketLimitType,
     username: String,
     market_data_id: Option<String>,
 ) {
@@ -227,6 +232,7 @@ async fn axum_handle_socket(
             uris.cbag_uri,
             tx.clone(),
             Arc::clone(&connection_state),
+            websocketlimit_type,
         ) {
             Ok(_) => {}
             Err(merx_error_response) => {
@@ -337,6 +343,7 @@ async fn axum_handle_socket(
                                 Some(username.clone()),
                                 market_data_id.clone(),
                                 false,
+                                websocketlimit_type,
                             );
                         }
                         MarketDataType::MarketDepthV1 => {
@@ -349,6 +356,7 @@ async fn axum_handle_socket(
                                 *market_data_type,
                                 username.clone().as_str(),
                                 market_data_id.clone(),
+                                websocketlimit_type,
                             );
                         }
                         MarketDataType::RestCostCalculatorV1 => {
@@ -370,6 +378,7 @@ async fn axum_handle_socket(
                                 None,
                                 market_data_id.clone(),
                                 true,
+                                websocketlimit_type,
                             );
                         }
                         _ => {
