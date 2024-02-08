@@ -34,6 +34,8 @@ pub type SubscriptionState = HashMap<Subscription, HashMap<SocketAddr, Tx>>;
 pub type SubscriptionCount = HashMap<SocketAddr, u32>;
 pub type SubscriptionIPCount = HashMap<IpAddr, u32>;
 
+pub type WebSocketLimitState = HashMap<WebSocketLimitRoute, HashMap<String, u32>>;
+
 // helper function for conversions from tungstenite message to axum message
 fn from_tungstenite(message: Message) -> Option<axum::extract::ws::Message> {
     match message {
@@ -57,6 +59,9 @@ pub struct ConnectionStateStruct {
     pub subscription_state: RwLock<SubscriptionState>,
     pub subscription_count: RwLock<SubscriptionCount>,
     pub subscription_ip_count: RwLock<SubscriptionIPCount>,
+
+    pub websocket_limit_state: RwLock<WebSocketLimitState>,
+
     pub users: RwLock<Users>,
     pub symbols: RwLock<Symbols>,
     pub symbols_whitelist: Vec<String>,
@@ -75,6 +80,9 @@ impl ConnectionStateStruct {
             subscription_state: RwLock::new(HashMap::new()),
             subscription_count: RwLock::new(HashMap::new()),
             subscription_ip_count: RwLock::new(HashMap::new()),
+
+            websocket_limit_state: RwLock::new(HashMap::new()),
+
             users: RwLock::new(Users::default()),
             symbols: RwLock::new(Symbols::default()),
             product_to_chart: RwLock::new(HashMap::new()),
@@ -152,6 +160,25 @@ impl ConnectionStateStruct {
             let mut subscription_count = self.subscription_count.write().unwrap();
             let mut subscription_ip_count = self.subscription_ip_count.write().unwrap();
 
+            let mut websocket_limit_state = self.websocket_limit_state.write().unwrap();
+            let key = match websocketlimit_type.limit_type {
+                WebSocketLimitType::IP => client_address.ip().to_string(),
+                WebSocketLimitType::Token => username,
+            };
+
+            let websocket_limit_route = websocket_limit_state
+                .entry(websocketlimit_type.clone())
+                .or_insert(HashMap::new());
+            if websocket_limit_route.contains_key(&key) {
+                if let Some(count_number) = websocket_limit_route.get_mut(&key) {
+                    if *count_number >= websocketlimit_type.limit_number {
+                        return Err(MerxErrorResponse::new(
+                            ErrorCode::ReachedWebSocketLimitNumber,
+                        ));
+                    }
+                }
+            }
+
             already_subscribed = subscription_state.contains_key(&subscription);
             // extract client's ip address from client's websocket address
             let client_ip = client_address.ip(); // extract the IP
@@ -165,6 +192,15 @@ impl ConnectionStateStruct {
                 let mut new_subscription_clients = HashMap::new();
                 new_subscription_clients.insert(*client_address, sender);
                 subscription_state.insert(subscription.clone(), new_subscription_clients);
+            }
+
+            // increment websocket count
+            if websocket_limit_route.contains_key(&key) {
+                if let Some(count_number) = websocket_limit_route.get_mut(&key) {
+                    *count_number += 1;
+                }
+            } else {
+                websocket_limit_route.insert(key, 1);
             }
 
             // increment subscription count
