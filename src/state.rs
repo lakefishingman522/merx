@@ -283,17 +283,59 @@ impl ConnectionStateStruct {
         Ok(())
     }
 
-    pub fn remove_client_from_state(&self, &client_address: &SocketAddr) {
+    pub fn remove_client_from_state(
+        &self,
+        &client_address: &SocketAddr,
+        websocketlimit_type: &WebSocketLimitRoute,
+        username: String,
+    ) {
         let mut subscription_state = self.subscription_state.write().unwrap();
         let mut subscription_count = self.subscription_count.write().unwrap();
         let mut subscription_ip_count = self.subscription_ip_count.write().unwrap();
 
+        let mut websocket_limit_state = self.websocket_limit_state.write().unwrap();
+
+        let mut removal_count = 0;
         // remove client from subscription state
         for (_, subscription_clients) in subscription_state.iter_mut() {
             if subscription_clients.contains_key(&client_address) {
                 subscription_clients.remove(&client_address);
+                removal_count += 1;
             }
         }
+
+        info!(
+            "Removed {} total websocket connection from {}",
+            removal_count, client_address
+        );
+
+        // code will execute only when removal_count equals 1
+        if removal_count == 1 {
+            // create a string `key` using a match statement based on the `limit_type` of `websocketlimit_type`
+            let key = match websocketlimit_type.limit_type {
+                WebSocketLimitType::IP => client_address.ip().to_string(),
+                WebSocketLimitType::Token => username,
+            };
+            websocket_limit_state.get_mut(websocketlimit_type)
+                .and_then(|route| 
+                    route.get_mut(&key)
+                        .map(|count_number| {
+                            // check if `count_number` is less than `1`
+                            if *count_number < 1 {
+                                // log an error message if count_number is less than `1`
+                                error!("Removed {} from subscription state, but the number was not decreased because that was 0", client_address);
+                            } else {
+                                // if count_number is not less than `1`, decrease it by `1`
+                                *count_number -= 1;
+                            }
+                        })
+                )
+                .unwrap_or_else(||
+                    // log an error message if unable to access `websocket_limit_route` with `key`
+                    error!("Removed {} from subscription state, but the number was not decreased because can not access to websocket_limit_route(key)", client_address)
+                );
+        }
+
 
         // and from the count
         let count = subscription_count.get(&client_address).map(|c| *c);

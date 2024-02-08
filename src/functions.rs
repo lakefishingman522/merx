@@ -431,7 +431,11 @@ async fn axum_handle_socket(
 
     // info!("{} {} disconnected", &client_address, username);
 
-    connection_state.remove_client_from_state(&client_address);
+    connection_state.remove_client_from_state(
+        &client_address,
+        websocketlimit_route,
+        username.clone(),
+    );
 
     // returning from the handler closes the websocket connection
     info!(
