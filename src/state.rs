@@ -22,7 +22,7 @@ use tracing::{error, info, warn};
 use crate::{
     error::{ErrorCode, MerxErrorResponse},
     md_handlers::{cbbo_v1, market_depth_v1},
-    routes_config::{MarketDataType, WebSocketLimitType},
+    routes_config::{MarketDataType, WebSocketLimitRoute, WebSocketLimitType},
     subscriptions::{SubTraits, Subscription},
     symbols::Symbols,
     user::{UserResponse, Users},
@@ -142,7 +142,8 @@ impl ConnectionStateStruct {
         cbag_uri: String,
         sender: Tx,
         connection_state: ConnectionState,
-        websocketlimit_type: &WebSocketLimitType,
+        websocketlimit_type: &WebSocketLimitRoute,
+        username: String,
     ) -> Result<(), MerxErrorResponse> {
         let now = Instant::now();
         let already_subscribed: bool;
@@ -152,6 +153,8 @@ impl ConnectionStateStruct {
             let mut subscription_ip_count = self.subscription_ip_count.write().unwrap();
 
             already_subscribed = subscription_state.contains_key(&subscription);
+            // extract client's ip address from client's websocket address
+            let client_ip = client_address.ip(); // extract the IP
 
             if let Some(subscription_clients) = subscription_state.get_mut(&subscription) {
                 if subscription_clients.contains_key(client_address) {
@@ -172,7 +175,7 @@ impl ConnectionStateStruct {
             }
 
             // increment subscription ip count
-            let client_ip = client_address.ip(); // extract the IP
+
             if let Some(ip_count) = subscription_ip_count.get_mut(&client_ip) {
                 info!(
                     "Adding the subscription ip count for {}, it was {}",
