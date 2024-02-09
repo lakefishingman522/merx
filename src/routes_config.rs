@@ -48,6 +48,11 @@ pub struct WebSocketLimitRoute {
 pub static WS_LIMIT_ROUTES: phf::Map<&'static str, WebSocketLimitRoute> = phf_map! {
     "/api/streaming/cbbo" => WebSocketLimitRoute {
         path: "/api/streaming/cbbo",
+        limit_type: WebSocketLimitType::Token,
+        limit_number: 20
+    },
+    "/api/public/streaming/cbbo" => WebSocketLimitRoute {
+        path: "/api/public/streaming/cbbo",
         limit_type: WebSocketLimitType::IP,
         limit_number: 20
     },

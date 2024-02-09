@@ -172,7 +172,7 @@ impl ConnectionStateStruct {
             if websocket_limit_route.contains_key(&key) {
                 if let Some(count_number) = websocket_limit_route.get_mut(&key) {
                     if *count_number >= websocketlimit_type.limit_number {
-                        warn!("Can not add client to subscription, because of websocket limit, it has reached to {}", count_number);
+                        warn!("Can not add client to subscription, because of websocket limit, it has reached to {}, {}", count_number, client_address);
                         return Err(MerxErrorResponse::new(
                             ErrorCode::ReachedWebSocketLimitNumber,
                         ));

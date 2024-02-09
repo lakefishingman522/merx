@@ -6,13 +6,20 @@ use futures_util::{pin_mut, SinkExt, StreamExt};
 // use futures_util::{pin_mut};
 // use futures_channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
 // use futures_channel::mpsc::{channel, Receiver, Sender};
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::{
+    mpsc::{channel, Receiver, Sender},
+    Mutex,
+};
 // Import the TryStreamExt trait
 use lazy_static::lazy_static;
 use tokio::time::{sleep, Duration, Instant};
 
 // for axum
-use axum::{body::Body, extract::ws::Message as axum_Message, http::Uri};
+use axum::{
+    body::Body,
+    extract::ws::{CloseFrame, Message as axum_Message},
+    http::Uri,
+};
 use axum::{
     extract::ws::{WebSocket, WebSocketUpgrade},
     extract::{OriginalUri, Query, State},
@@ -210,7 +217,8 @@ async fn axum_handle_socket(
     let tx_task_tx = tx.clone();
     let recv_task_cbag_uri = uris.cbag_uri.clone();
     let recv_task_cbag_depth_uri = uris.cbag_depth_uri.clone();
-    let (mut outgoing, incoming) = websocket.split();
+    let (outgoing, incoming) = websocket.split();
+    let outgoing = Arc::new(Mutex::new(outgoing));
 
     // add the client to the connection state. If the url isn't already subscribed
     // to, we need to spawn a process to subscribe to the url. This has to be done
@@ -254,28 +262,40 @@ async fn axum_handle_socket(
     let client_address_clone = client_address;
     let subscription_type_clone = subscription_type.clone();
     let username_clone = username.clone();
+
+    let outgoing_clone = Arc::clone(&outgoing);
     let check_subscription_still_active = tokio::spawn(async move {
         // save the time at this point
         let connection_time = tokio::time::Instant::now();
-
         loop {
             sleep(Duration::from_millis(1000)).await;
             {
-                if matches!(subscription_type_clone, SubscriptionType::Subscription)
-                    || matches!(
-                        subscription_type_clone,
-                        SubscriptionType::PublicSubscription
-                    ) && (tokio::time::Instant::now() - connection_time
-                        < Duration::from_secs(20))
-                {
-                    continue;
-                }
+                // if matches!(subscription_type_clone, SubscriptionType::Subscription)
+                //     || matches!(
+                //         subscription_type_clone,
+                //         SubscriptionType::PublicSubscription
+                //     ) && (tokio::time::Instant::now() - connection_time
+                //         < Duration::from_secs(20))
+                // {
+                //     continue;
+                // }
 
                 if !connection_state_clone.is_client_still_active(&client_address) {
                     info!(
                         "Client {} {} Disconnected or subscription no longer active. ending check task",
                         &client_address_clone, &username_clone
                     );
+                    // Send close_frame msg to websocket client
+                    let close_frame = CloseFrame {
+                        code: 1000, // Normal closure
+                        reason: "Subscription no longer active".into(),
+                    };
+
+                    let close_msg = axum_Message::Close(Some(close_frame));
+                    let mut out = outgoing_clone.lock().await;
+                    if let Err(e) = out.send(close_msg).await {
+                        warn!("Error sending close message: {}", e);
+                    }
                     return;
                 }
                 if matches!(
@@ -283,6 +303,19 @@ async fn axum_handle_socket(
                     SubscriptionType::PublicSubscription
                 ) {
                     if exceeds_max_session_time(connection_time) {
+                        info!("exceed max session time");
+
+                        // Send close_frame msg to websocket client
+                        let close_frame = CloseFrame {
+                            code: 1000, // Normal closure
+                            reason: "Exceeds max session time".into(),
+                        };
+                        let close_msg = axum_Message::Close(Some(close_frame));
+                        let mut out = outgoing_clone.lock().await;
+                        if let Err(e) = out.send(close_msg).await {
+                            warn!("Error sending close message: {}", e);
+                        }
+
                         return;
                     }
                 }
@@ -401,9 +434,10 @@ async fn axum_handle_socket(
         // Ok(())
     });
 
+    let outgoing_clone = Arc::clone(&outgoing);
     let receive_from_others = async {
         while let Some(msg) = rx.recv().await {
-            match outgoing.send(msg).await {
+            match outgoing_clone.lock().await.send(msg).await {
                 Ok(_) => {}
                 Err(_try_send_error) => {
                     warn!("Sending error, client likely disconnected.");
