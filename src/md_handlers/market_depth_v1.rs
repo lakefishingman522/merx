@@ -175,7 +175,7 @@ pub fn handle_subscription(
 
     let interval_ms: u32;
     if username == "PUBLIC" {
-        interval_ms = 60_000; // The 60 * 1000 can be directly written as 60_000 to make it easier to read
+        interval_ms = 30_000; 
     } else {
         interval_ms = 300;
     }
