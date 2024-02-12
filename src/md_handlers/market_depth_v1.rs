@@ -179,7 +179,7 @@ pub fn handle_subscription(
 
     let interval_ms: u32;
     if username == "PUBLIC" {
-        interval_ms = 25_000;
+        interval_ms = 30_000;
     } else {
         interval_ms = 300;
     }
