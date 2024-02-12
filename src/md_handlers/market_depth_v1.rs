@@ -1,5 +1,5 @@
 use crate::error::{ErrorCode, MerxErrorResponse};
-use crate::md_handlers::helper::cbag_market_to_exchange;
+use crate::md_handlers::helper::{cbag_market_to_exchange, exchange_to_cbag_market};
 use crate::subscriptions::{SnapshotStruct, Subscription};
 use crate::{
     routes_config::{MarketDataType, WebSocketLimitRoute},
@@ -49,6 +49,9 @@ pub fn handle_subscription(
     market_data_id: Option<String>,
     websocketlimit_route: &WebSocketLimitRoute,
 ) {
+    if let Some(id) = &market_data_id {
+        println!("{}", id);
+    }
     //check that state is ready
     if !connection_state.is_ready() {
         match sender.try_send(axum::extract::ws::Message::Text(
@@ -129,36 +132,64 @@ pub fn handle_subscription(
         return;
     }
 
-    let cbag_markets = match connection_state.validate_exchanges_vector(
-        username,
-        &parsed_sub_msg.exchanges,
-        market_data_id,
-    ) {
-        Ok(cbag_markets) => cbag_markets,
-        Err(merx_error_response) => {
-            match sender.try_send(axum::extract::ws::Message::Text(
-                merx_error_response.to_json_str(),
-            )) {
-                Ok(_) => {}
-                Err(_try_send_error) => {
-                    // warn!("Buffer probably full.");
-                }
-            };
-            return;
+    let cbag_markets = if username == "PUBLIC" {
+        connection_state
+            .chart_exchanges
+            .clone()
+            .iter()
+            .map(|exchange| {
+                exchange_to_cbag_market(
+                    exchange, "",    // client_id
+                    false, // non_agg_prices
+                    false, // customer_specific
+                    true,  // _public
+                    None,  // market_data_id
+                )
+            })
+            .collect()
+    } else {
+        match connection_state.validate_exchanges_vector(
+            username,
+            &parsed_sub_msg.exchanges,
+            market_data_id,
+        ) {
+            Ok(cbag_markets) => cbag_markets,
+            Err(merx_error_response) => {
+                match sender.try_send(axum::extract::ws::Message::Text(
+                    merx_error_response.to_json_str(),
+                )) {
+                    Ok(_) => {}
+                    Err(_try_send_error) => {
+                        // warn!("Buffer probably full.");
+                    }
+                };
+                return;
+            }
         }
     };
 
-    let depth_limit = match parsed_sub_msg.depth_limit {
-        Some(depth_limit) => depth_limit.to_string(),
-        None => String::from("50"),
+    let depth_limit = if username == "PUBLIC" {
+        String::from("200")
+    } else {
+        match parsed_sub_msg.depth_limit {
+            Some(depth_limit) => depth_limit.to_string(),
+            None => String::from("50"),
+        }
     };
+
+    let interval_ms: u32;
+    if username == "PUBLIC" {
+        interval_ms = 30_000; 
+    } else {
+        interval_ms = 300;
+    }
 
     let subscription = Subscription::Snapshot(SnapshotStruct::new(
         market_data_type,
         parsed_sub_msg.currency_pair,
         cbag_markets,
         depth_limit.parse::<u32>().unwrap(),
-        300,
+        interval_ms,
     ));
 
     match connection_state.add_client_to_subscription(

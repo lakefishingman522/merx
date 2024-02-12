@@ -205,6 +205,8 @@ async fn main() {
         .route("/api/public/streaming/cbbo/", get(axum_ws_handler))
         .route("/api/streaming/market_depth", get(axum_ws_handler))
         .route("/api/streaming/market_depth/", get(axum_ws_handler))
+        .route("/api/public/streaming/market_depth", get(axum_ws_handler))
+        .route("/api/public/streaming/market_depth/", get(axum_ws_handler))
         .fallback(fallback)
         .with_state(connection_state.clone())
         .layer(Extension(uris))

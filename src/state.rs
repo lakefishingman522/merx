@@ -130,7 +130,7 @@ impl ConnectionStateStruct {
                             info!("Error getting chart for {}", product);
                         }
                     };
-                    sleep(Duration::from_millis(60 * 1000)).await;
+                    sleep(Duration::from_millis(30 * 1000)).await;
                 }
             });
         }

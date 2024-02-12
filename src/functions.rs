@@ -415,6 +415,19 @@ async fn axum_handle_socket(
                                 websocketlimit_route,
                             );
                         }
+
+                        MarketDataType::MarketDepthV1 => {
+                            market_depth_v1::handle_subscription(
+                                &client_address,
+                                &recv_task_connection_state,
+                                msg_str,
+                                recv_task_cbag_depth_uri.clone(),
+                                tx_task_tx.clone(),
+                                *market_data_type,
+                                username.clone().as_str(),
+                                market_data_id.clone(),
+                            );
+                        }
                         _ => {
                             info!("{} Received an unexpected text frame", &client_address);
                         }
