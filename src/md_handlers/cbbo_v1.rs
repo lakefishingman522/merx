@@ -66,7 +66,7 @@ pub fn handle_subscription(
     username: Option<String>,
     market_data_id: Option<String>,
     enforce_subscription_whitelist: bool,
-    websocketlimit_route: &WebSocketLimitRoute,
+    websocketlimit_route: Option<&WebSocketLimitRoute>,
 ) {
     info!("Received subscription message: {}", subscription_msg);
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {

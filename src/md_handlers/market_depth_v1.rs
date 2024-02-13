@@ -47,7 +47,7 @@ pub fn handle_subscription(
     market_data_type: MarketDataType,
     username: &str,
     market_data_id: Option<String>,
-    websocketlimit_route: &WebSocketLimitRoute,
+    websocketlimit_route: Option<&WebSocketLimitRoute>,
 ) {
     if let Some(id) = &market_data_id {
         println!("{}", id);

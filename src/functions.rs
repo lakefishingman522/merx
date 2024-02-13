@@ -146,7 +146,7 @@ pub async fn axum_ws_handler(
         //TODO
     }
     let subscription_type = SUB_TYPE.get(base_route).unwrap();
-    let websocketlimit_route = WS_LIMIT_ROUTES.get(base_route).unwrap();
+    let websocketlimit_route = WS_LIMIT_ROUTES.get(base_route);
 
     let auth_uri = uris.auth_uri.clone();
     let uris_clone = uris.clone();
@@ -202,7 +202,7 @@ async fn axum_handle_socket(
     uris: URIs,
     market_data_type: &MarketDataType,
     subscription_type: &SubscriptionType,
-    websocketlimit_route: &WebSocketLimitRoute,
+    websocketlimit_route: Option<&WebSocketLimitRoute>,
     username: String,
     market_data_id: Option<String>,
 ) {

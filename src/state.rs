@@ -150,7 +150,7 @@ impl ConnectionStateStruct {
         cbag_uri: String,
         sender: Tx,
         connection_state: ConnectionState,
-        websocketlimit_type: &WebSocketLimitRoute,
+        websocketlimit_type: Option<&WebSocketLimitRoute>,
         username: String,
     ) -> Result<(), MerxErrorResponse> {
         let now = Instant::now();
@@ -161,21 +161,34 @@ impl ConnectionStateStruct {
             let mut subscription_ip_count = self.subscription_ip_count.write().unwrap();
 
             let mut websocket_limit_state = self.websocket_limit_state.write().unwrap();
-            let key = match websocketlimit_type.limit_type {
-                WebSocketLimitType::IP => client_address.ip().to_string(),
-                WebSocketLimitType::Token => username,
-            };
 
-            let websocket_limit_route = websocket_limit_state
-                .entry(websocketlimit_type.clone())
-                .or_insert(HashMap::new());
-            if websocket_limit_route.contains_key(&key) {
-                if let Some(count_number) = websocket_limit_route.get_mut(&key) {
-                    if *count_number >= websocketlimit_type.limit_number {
-                        warn!("Can not add client to subscription, because of websocket limit, it has reached to {}, {}", count_number, client_address);
-                        return Err(MerxErrorResponse::new(
-                            ErrorCode::ReachedWebSocketLimitNumber,
-                        ));
+            // Define websocket_limit_route as mutable
+            let mut websocket_limit_route: Option<&mut HashMap<String, u32>> = None;
+            let mut key: Option<String> = None;
+
+            if let Some(websocketlimit_type) = websocketlimit_type {
+                key = Some(match websocketlimit_type.limit_type {
+                    WebSocketLimitType::IP => client_address.ip().to_string(),
+                    WebSocketLimitType::Token => username,
+                });
+
+                websocket_limit_route = Some(
+                    websocket_limit_state
+                        .entry(websocketlimit_type.clone())
+                        .or_insert(HashMap::new()),
+                );
+                if let Some(websocket_limit_route) = websocket_limit_route.as_mut() {
+                    if let Some(key) = &key {
+                        if websocket_limit_route.contains_key(key) {
+                            if let Some(count_number) = websocket_limit_route.get_mut(key) {
+                                if *count_number >= websocketlimit_type.limit_number {
+                                    warn!("Can not add client to subscription, because of websocket limit, it has reached to {}, {}", count_number, client_address);
+                                    return Err(MerxErrorResponse::new(
+                                        ErrorCode::ReachedWebSocketLimitNumber,
+                                    ));
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -196,14 +209,18 @@ impl ConnectionStateStruct {
             }
 
             // increment websocket count
-            if websocket_limit_route.contains_key(&key) {
-                if let Some(count_number) = websocket_limit_route.get_mut(&key) {
-                    *count_number += 1;
-                    info!("Increased websocket connection number about {} , key is {}, current connection number is {}", client_address,key,count_number);
+            if let Some(websocket_limit_route) = websocket_limit_route.as_mut() {
+                if let Some(key) = &key {
+                    if websocket_limit_route.contains_key(key) {
+                        if let Some(count_number) = websocket_limit_route.get_mut(key) {
+                            *count_number += 1;
+                            info!("Increased websocket connection number about {} , key is {}, current connection number is {}", client_address,key,count_number);
+                        }
+                    } else {
+                        websocket_limit_route.insert(key.clone(), 1);
+                        info!("Increased websocket connection number about {} , key is {}, current connection number is {}", client_address, key,1);
+                    }
                 }
-            } else {
-                websocket_limit_route.insert(key.clone(), 1);
-                info!("Increased websocket connection number about {} , key is {}, current connection number is {}", client_address, key,1);
             }
 
             // increment subscription count
@@ -289,7 +306,7 @@ impl ConnectionStateStruct {
     pub fn remove_client_from_state(
         &self,
         &client_address: &SocketAddr,
-        websocketlimit_type: &WebSocketLimitRoute,
+        websocketlimit_type: Option<&WebSocketLimitRoute>,
         username: String,
     ) {
         let mut subscription_state = self.subscription_state.write().unwrap();
@@ -314,38 +331,40 @@ impl ConnectionStateStruct {
 
         // code will execute only when removal_count equals 1
         if removal_count == 1 {
-            // create a string `key` using a match statement based on the `limit_type` of `websocketlimit_type`
-            let key = match websocketlimit_type.limit_type {
-                WebSocketLimitType::IP => client_address.ip().to_string(),
-                WebSocketLimitType::Token => username,
-            };
+            if let Some(websocketlimit_type) = websocketlimit_type {
+                // create a string `key` using a match statement based on the `limit_type` of `websocketlimit_type`
+                let key = match websocketlimit_type.limit_type {
+                    WebSocketLimitType::IP => client_address.ip().to_string(),
+                    WebSocketLimitType::Token => username,
+                };
 
-            let mut should_remove = false;
+                let mut should_remove = false;
 
-            if let Some(route) = websocket_limit_state.get_mut(websocketlimit_type) {
-                if let Some(count_number) = route.get_mut(&key) {
-                    if *count_number < 1 {
-                        // log an error message if count_number is less than `1`
-                        error!("Removed {} from subscription state, but the number was not decreased because that was 0", client_address);
-                    } else {
-                        // if count_number is not less than `1`, decrease it by `1`
-                        *count_number -= 1;
-                        info!("Decreased 1 websocket number about {} from websocket limit number, key was {}", client_address, key);
-                    }
-
-                    if *count_number == 0 {
-                        should_remove = true;
-                    }
-                }
-            } else {
-                // log an error message if unable to access `websocket_limit_route` with `key`
-                error!("Removed {} from subscription state, but the number was not decreased because can not access to websocket_limit_route(key)", client_address)
-            }
-
-            if should_remove {
                 if let Some(route) = websocket_limit_state.get_mut(websocketlimit_type) {
-                    route.remove(&key);
-                    info!("Removed websocket number about {} from websocket limit number, because that is 0", client_address);
+                    if let Some(count_number) = route.get_mut(&key) {
+                        if *count_number < 1 {
+                            // log an error message if count_number is less than `1`
+                            error!("Removed {} from subscription state, but the number was not decreased because that was 0", client_address);
+                        } else {
+                            // if count_number is not less than `1`, decrease it by `1`
+                            *count_number -= 1;
+                            info!("Decreased 1 websocket number about {} from websocket limit number, key was {}", client_address, key);
+                        }
+
+                        if *count_number == 0 {
+                            should_remove = true;
+                        }
+                    }
+                } else {
+                    // log an error message if unable to access `websocket_limit_route` with `key`
+                    error!("Removed {} from subscription state, but the number was not decreased because can not access to websocket_limit_route(key)", client_address)
+                }
+
+                if should_remove {
+                    if let Some(route) = websocket_limit_state.get_mut(websocketlimit_type) {
+                        route.remove(&key);
+                        info!("Removed websocket number about {} from websocket limit number, because that is 0", client_address);
+                    }
                 }
             }
         }
