@@ -1,6 +1,6 @@
 use argh::FromArgs;
 use axum::extract::Extension;
-use axum::routing::post;
+// use axum::routing::post;
 use axum::{routing::get, Router};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -189,8 +189,8 @@ async fn main() {
         // .route("/legacy-cbbo/:symbol", get(forward_request))
         // .route("/cost-calculator/:symbol", get(forward_request))
         .route(
-            "/api/cost_calculator",
-            post(rest_cost_calculator_v1::handle_request),
+            "/api/cost_calculator/:currency_pair",
+            get(rest_cost_calculator_v1::handle_request),
         )
         // WS Endpoints
         // .route("/ws/snapshot/:subscription", get(axum_ws_handler))
