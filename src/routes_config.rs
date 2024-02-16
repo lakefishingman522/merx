@@ -51,11 +51,11 @@ pub static WS_LIMIT_ROUTES: phf::Map<&'static str, WebSocketLimitRoute> = phf_ma
     "/api/streaming/cbbo" => WebSocketLimitRoute {
         path: "/api/streaming/cbbo",
         limit_type: WebSocketLimitType::Token,
-        limit_number: 50
+        limit_number: 100
     },
     "/api/streaming/market_depth" => WebSocketLimitRoute {
         path: "/api/streaming/market_depth",
         limit_type: WebSocketLimitType::Token,
-        limit_number: 50
+        limit_number: 100
     },
 };
