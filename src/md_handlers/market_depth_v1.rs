@@ -1,7 +1,10 @@
 use crate::error::{ErrorCode, MerxErrorResponse};
 use crate::md_handlers::helper::{cbag_market_to_exchange, exchange_to_cbag_market};
 use crate::subscriptions::{SnapshotStruct, Subscription};
-use crate::{routes_config::MarketDataType, state::ConnectionState};
+use crate::{
+    routes_config::{MarketDataType, WebSocketLimitRoute},
+    state::ConnectionState,
+};
 // use futures_channel::mpsc::Sender;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -44,6 +47,7 @@ pub fn handle_subscription(
     market_data_type: MarketDataType,
     username: &str,
     market_data_id: Option<String>,
+    websocketlimit_route: Option<&WebSocketLimitRoute>,
 ) {
     if let Some(id) = &market_data_id {
         println!("{}", id);
@@ -175,7 +179,7 @@ pub fn handle_subscription(
 
     let interval_ms: u32;
     if username == "PUBLIC" {
-        interval_ms = 30_000; 
+        interval_ms = 30_000;
     } else {
         interval_ms = 300;
     }
@@ -194,6 +198,8 @@ pub fn handle_subscription(
         cbag_uri,
         sender.clone(),
         Arc::clone(connection_state),
+        websocketlimit_route,
+        username.to_string(),
     ) {
         Ok(_) => {}
         Err(merx_error_response) => {

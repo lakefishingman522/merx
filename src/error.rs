@@ -69,6 +69,8 @@ pub enum ErrorCode {
     ServerInitializing = 101005,
     AlreadySubscribed = 101006,
     ServerError = 101007,
+    // Websocket Limit Number errs
+    ReachedWebSocketLimitNumber = 101008,
 }
 
 impl serde::ser::Serialize for ErrorCode {
@@ -97,6 +99,7 @@ impl fmt::Display for ErrorCode {
             ErrorCode::ServerInitializing => write!(f, "AWAITING_SYMBOL_DATA"),
             ErrorCode::AlreadySubscribed => write!(f, "ALREADY_SUBSCRIBED"),
             ErrorCode::ServerError => write!(f, "SERVER_ERROR"),
+            ErrorCode::ReachedWebSocketLimitNumber => write!(f, "REACHED_WEBSOCKET_LIMIT_NUMBER"),
         }
     }
 }
@@ -126,6 +129,7 @@ impl ErrorCode {
             }
             ErrorCode::AlreadySubscribed => "Already subscribed to this subscription",
             ErrorCode::ServerError => "Unexpected Server Error",
+            ErrorCode::ReachedWebSocketLimitNumber => "Reached websocket limit number",
         }
     }
 }

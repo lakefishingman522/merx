@@ -34,3 +34,28 @@ pub static SUB_TYPE: phf::Map<&'static str, SubscriptionType> = phf_map! {
     "/api/public/streaming/cbbo" => SubscriptionType::PublicSubscription,
     "/api/public/streaming/market_depth" => SubscriptionType::PublicSubscription,
 };
+
+#[derive(Eq, Hash, PartialEq, Clone, Debug)]
+pub enum WebSocketLimitType {
+    IP,
+    Token,
+}
+#[derive(Eq, Hash, PartialEq, Clone, Debug)]
+pub struct WebSocketLimitRoute {
+    pub path: &'static str,
+    pub limit_type: WebSocketLimitType,
+    pub limit_number: u32,
+}
+
+pub static WS_LIMIT_ROUTES: phf::Map<&'static str, WebSocketLimitRoute> = phf_map! {
+    "/api/streaming/cbbo" => WebSocketLimitRoute {
+        path: "/api/streaming/cbbo",
+        limit_type: WebSocketLimitType::Token,
+        limit_number: 50
+    },
+    "/api/streaming/market_depth" => WebSocketLimitRoute {
+        path: "/api/streaming/market_depth",
+        limit_type: WebSocketLimitType::Token,
+        limit_number: 50
+    },
+};

@@ -1,7 +1,10 @@
 use crate::error::{ErrorCode, MerxErrorResponse};
 use crate::md_handlers::helper::cbag_market_to_exchange;
 use crate::subscriptions::{LegacyCbboStruct, Subscription};
-use crate::{routes_config::MarketDataType, state::ConnectionState};
+use crate::{
+    routes_config::{MarketDataType, WebSocketLimitRoute},
+    state::ConnectionState,
+};
 // use futures_channel::mpsc::Sender;
 use core::f64;
 use serde::{Deserialize, Serialize};
@@ -63,6 +66,7 @@ pub fn handle_subscription(
     username: Option<String>,
     market_data_id: Option<String>,
     enforce_subscription_whitelist: bool,
+    websocketlimit_route: Option<&WebSocketLimitRoute>,
 ) {
     info!("Received subscription message: {}", subscription_msg);
     let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
@@ -203,7 +207,7 @@ pub fn handle_subscription(
     // };
 
     let client_id = match username {
-        Some(username) => {
+        Some(ref username) => {
             match connection_state.get_client_id(username.as_str()) {
                 Ok(id) => Some(id),
                 Err(_) => {
@@ -238,12 +242,19 @@ pub fn handle_subscription(
         client_id,
     ));
 
+    let username_str = match &username {
+        Some(username_) => username_.clone(),
+        None => "PUBLIC".to_string(),
+    };
+
     match connection_state.add_client_to_subscription(
         client_address,
         subscription,
         cbag_uri,
         sender.clone(),
         Arc::clone(connection_state),
+        websocketlimit_route,
+        username_str,
     ) {
         Ok(_) => {}
         Err(merx_error_response) => {
