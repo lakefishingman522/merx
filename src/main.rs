@@ -203,6 +203,8 @@ async fn main() {
         .route("/api/public/streaming/ohlc", get(get_cached_ohlc_response))
         .route("/api/public/streaming/cbbo", get(axum_ws_handler))
         .route("/api/public/streaming/cbbo/", get(axum_ws_handler))
+        .route("/api/streaming/cost_calculator", get(axum_ws_handler))
+        .route("/api/streaming/cost_calculator/", get(axum_ws_handler))
         .route("/api/streaming/market_depth", get(axum_ws_handler))
         .route("/api/streaming/market_depth/", get(axum_ws_handler))
         .route("/api/public/streaming/market_depth", get(axum_ws_handler))
