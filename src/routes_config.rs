@@ -31,7 +31,7 @@ pub static SUB_TYPE: phf::Map<&'static str, SubscriptionType> = phf_map! {
     // "/legacy-cbbo/:symbol" => Routes::CBBO,
     "/api/streaming/cbbo" => SubscriptionType::Subscription,
     "/api/streaming/market_depth" => SubscriptionType::Subscription,
-    "/api/streaming/cost_calculator" => SubscriptionType::AuthenticatedRest,
+    "/api/streaming/cost_calculator" => SubscriptionType::Subscription,
     "/api/public/streaming/cbbo" => SubscriptionType::PublicSubscription,
     "/api/public/streaming/market_depth" => SubscriptionType::PublicSubscription,
 };
@@ -52,11 +52,11 @@ pub static WS_LIMIT_ROUTES: phf::Map<&'static str, WebSocketLimitRoute> = phf_ma
     "/api/streaming/cbbo" => WebSocketLimitRoute {
         path: "/api/streaming/cbbo",
         limit_type: WebSocketLimitType::Token,
-        limit_number: 1000
+        limit_number: 1
     },
     "/api/streaming/market_depth" => WebSocketLimitRoute {
         path: "/api/streaming/market_depth",
         limit_type: WebSocketLimitType::Token,
-        limit_number: 1000
+        limit_number: 1
     },
 };
