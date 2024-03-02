@@ -191,7 +191,7 @@ pub fn handle_subscription(
         return;
     }
 
-    match connection_state.validate_exchanges_vector(
+    let cbag_markets = match connection_state.validate_exchanges_vector(
         username,
         &parsed_sub_msg.exchanges,
         market_data_id,
@@ -210,7 +210,40 @@ pub fn handle_subscription(
         }
     };
 
-    let subscription = Subscription::Direct(DirectStruct::new(market_data_type, "".to_string()));
+    // Convert quantities to a comma-separated string
+    let quantities_str = parsed_sub_msg
+        .quantities
+        .iter()
+        .map(|quantity| quantity.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let exchanges_str = cbag_markets
+        .iter()
+        .map(|exchange| {
+            // Remove 'sim_' prefix if present
+            let trimmed_exchange = if exchange.starts_with("SIM_") {
+                &exchange["SIM_".len()..]
+            } else {
+                exchange
+            };
+            // Map to specific names or convert to uppercase
+            match trimmed_exchange.to_lowercase().as_str() {
+                "gdax" => String::from("COINBASE"),
+                "huobipro" => String::from("HUOBI"),
+                _ => trimmed_exchange.to_uppercase(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+
+    // Construct the WebSocket URL string
+    let ws_endpoint = format!(
+        "/ws/cost-calculator/{}?side=both&funding_quantity={}&interval_ms=1000&markets={}",
+        parsed_sub_msg.currency_pair, quantities_str, exchanges_str
+    );
+
+    let subscription = Subscription::Direct(DirectStruct::new(market_data_type, ws_endpoint));
 
     match connection_state.add_client_to_subscription(
         client_address,

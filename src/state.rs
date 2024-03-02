@@ -769,7 +769,8 @@ pub fn subscribe_to_market_data(
                                 }
                                 MarketDataType::Direct => Ok(message_text),
                                 MarketDataType::RestCostCalculatorV1 => {
-                                    Err("Unexpected Market Data Type".into())
+                                    Ok(message_text)
+                                    // Err("Unexpected Market Data Type".into())
                                 }
                             };
 
