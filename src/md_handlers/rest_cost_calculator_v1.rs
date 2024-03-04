@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+use crate::error::{ErrorCode, MerxErrorResponse};
+use crate::subscriptions::{DirectStruct, Subscription};
+use std::{collections::HashMap, net::SocketAddr};
 
 use axum::{
     body::Body,
@@ -8,12 +10,19 @@ use axum::{
     Extension,
 };
 use reqwest::{Client, StatusCode};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use crate::auth::check_token_and_authenticate;
 use crate::functions::URIs;
-use crate::state::ConnectionState;
+use crate::{
+    routes_config::{MarketDataType, WebSocketLimitRoute},
+    state::ConnectionState,
+};
+use tokio::sync::mpsc::Sender;
 use tracing::info;
+
+pub type Tx = Sender<axum::extract::ws::Message>;
 
 #[derive(Deserialize)]
 #[allow(dead_code)]
@@ -96,5 +105,165 @@ pub async fn handle_request(
             .status(StatusCode::UNAUTHORIZED)
             .body(Body::from("Unauthorized".to_string()))
             .unwrap(),
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SubscriptionMessage {
+    currency_pair: String,
+    exchanges: Vec<String>,
+    quantities: Vec<f64>,
+}
+
+pub fn handle_subscription(
+    client_address: &SocketAddr,
+    connection_state: &ConnectionState,
+    subscription_msg: String,
+    cbag_uri: String,
+    sender: Tx,
+    market_data_type: MarketDataType,
+    username: &str,
+    market_data_id: Option<String>,
+    websocketlimit_route: Option<&WebSocketLimitRoute>,
+) {
+    info!(
+        "Received otc cost calculator subscription message: {}",
+        subscription_msg
+    );
+
+    //check that state is ready
+    if !connection_state.is_ready() {
+        match sender.try_send(axum::extract::ws::Message::Text(
+            MerxErrorResponse::new(ErrorCode::ServerInitializing).to_json_str(),
+        )) {
+            Ok(_) => {}
+            Err(_try_send_error) => {
+                // warn!("Buffer probably full.");
+            }
+        };
+        return;
+    }
+
+    let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
+        Ok(msg) => msg,
+        Err(e) => {
+            match sender.try_send(axum::extract::ws::Message::Text(
+                MerxErrorResponse::new(ErrorCode::InvalidSubscriptionMessage).to_json_str(),
+            )) {
+                Ok(_) => {}
+                Err(_try_send_error) => {
+                    // warn!("Buffer probably full.");
+                }
+            };
+            tracing::error!("Error parsing subscription message: {}", e);
+            return;
+        }
+    };
+    //check that the currency pair is valid
+    match connection_state.is_pair_valid(&parsed_sub_msg.currency_pair) {
+        Ok(_) => {}
+        Err(merx_error_response) => {
+            match sender.try_send(axum::extract::ws::Message::Text(
+                merx_error_response.to_json_str(),
+            )) {
+                Ok(_) => {}
+                Err(_try_send_error) => {
+                    // warn!("Buffer probably full.");
+                }
+            };
+            return;
+        }
+    }
+
+    if parsed_sub_msg.exchanges.is_empty() {
+        match sender.try_send(axum::extract::ws::Message::Text(
+            MerxErrorResponse::new_and_override_error_text(
+                ErrorCode::InvalidExchanges,
+                "No Exchanges Found. At least one exchange must be provided",
+            )
+            .to_json_str(),
+        )) {
+            Ok(_) => {}
+            Err(_try_send_error) => {
+                // warn!("Buffer probably full.");
+            }
+        };
+        return;
+    }
+
+    let cbag_markets = match connection_state.validate_exchanges_vector(
+        username,
+        &parsed_sub_msg.exchanges,
+        market_data_id,
+    ) {
+        Ok(cbag_markets) => cbag_markets,
+        Err(merx_error_response) => {
+            match sender.try_send(axum::extract::ws::Message::Text(
+                merx_error_response.to_json_str(),
+            )) {
+                Ok(_) => {}
+                Err(_try_send_error) => {
+                    // warn!("Buffer probably full.");
+                }
+            };
+            return;
+        }
+    };
+
+    // Convert quantities to a comma-separated string
+    let quantities_str = parsed_sub_msg
+        .quantities
+        .iter()
+        .map(|quantity| quantity.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let exchanges_str = cbag_markets
+        .iter()
+        .map(|exchange| {
+            // Remove 'sim_' prefix if present
+            let trimmed_exchange = if exchange.starts_with("SIM_") {
+                &exchange["SIM_".len()..]
+            } else {
+                exchange
+            };
+            // Map to specific names or convert to uppercase
+            match trimmed_exchange.to_lowercase().as_str() {
+                "gdax" => String::from("COINBASE"),
+                "huobipro" => String::from("HUOBI"),
+                _ => trimmed_exchange.to_uppercase(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+
+    // Construct the WebSocket URL string
+    let ws_endpoint = format!(
+        "/ws/cost-calculator/{}?side=both&funding_quantity={}&interval_ms=1000&markets={}",
+        parsed_sub_msg.currency_pair, quantities_str, exchanges_str
+    );
+
+    let subscription = Subscription::Direct(DirectStruct::new(market_data_type, ws_endpoint));
+
+    match connection_state.add_client_to_subscription(
+        client_address,
+        subscription,
+        cbag_uri,
+        sender.clone(),
+        Arc::clone(connection_state),
+        websocketlimit_route,
+        username.to_string(),
+    ) {
+        Ok(_) => {}
+        Err(merx_error_response) => {
+            match sender.try_send(axum::extract::ws::Message::Text(
+                merx_error_response.to_json_str(),
+            )) {
+                Ok(_) => {}
+                Err(_try_send_error) => {
+                    // warn!("Buffer probably full.");
+                }
+            }
+        }
     }
 }

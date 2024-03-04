@@ -40,7 +40,7 @@ use tracing::{error, info, warn};
 // use crate::routes_config::{ROUTES, SUB_TYPE};
 
 use crate::auth::check_token_and_authenticate;
-use crate::md_handlers::{cbbo_v1, market_depth_v1};
+use crate::md_handlers::{cbbo_v1, market_depth_v1, rest_cost_calculator_v1};
 use crate::routes_config::{
     MarketDataType, SubscriptionType, WebSocketLimitRoute, ROUTES, SUB_TYPE, WS_LIMIT_ROUTES,
 };
@@ -270,15 +270,15 @@ async fn axum_handle_socket(
         loop {
             sleep(Duration::from_millis(1000)).await;
             {
-                // if matches!(subscription_type_clone, SubscriptionType::Subscription)
-                //     || matches!(
-                //         subscription_type_clone,
-                //         SubscriptionType::PublicSubscription
-                //     ) && (tokio::time::Instant::now() - connection_time
-                //         < Duration::from_secs(20))
-                // {
-                //     continue;
-                // }
+                if matches!(subscription_type_clone, SubscriptionType::Subscription)
+                    || matches!(
+                        subscription_type_clone,
+                        SubscriptionType::PublicSubscription
+                    ) && (tokio::time::Instant::now() - connection_time
+                        < Duration::from_secs(20))
+                {
+                    continue;
+                }
 
                 if !connection_state_clone.is_client_still_active(&client_address) {
                     info!(
@@ -394,7 +394,18 @@ async fn axum_handle_socket(
                             );
                         }
                         MarketDataType::RestCostCalculatorV1 => {
-                            error!("unexpected Market Data Type");
+                            info!("recieved websocket connection for otc cost calculator");
+                            rest_cost_calculator_v1::handle_subscription(
+                                &client_address,
+                                &recv_task_connection_state,
+                                msg_str,
+                                recv_task_cbag_depth_uri.clone(),
+                                tx_task_tx.clone(),
+                                *market_data_type,
+                                username.clone().as_str(),
+                                market_data_id.clone(),
+                                websocketlimit_route,
+                            );
                         }
                         MarketDataType::Direct => {
                             info!("{} Received a message, ignoring", &client_address);
