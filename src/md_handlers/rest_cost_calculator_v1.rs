@@ -274,7 +274,7 @@ pub fn handle_subscription(
 struct InputData {
     side: String,
     markets: String,
-    target_quantity: String,
+    target_quantity: Option<String>,
     sweep_orders: HashMap<String, Vec<String>>,
     totals: HashMap<String, serde_json::Value>,
     // others if needed
@@ -288,8 +288,8 @@ struct RecievedMessage {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OutputMessage {
     // symbol: String,
-    asks: HashMap<String, Vec<Order>>,
-    bids: HashMap<String, Vec<Order>>,
+    asks: HashMap<Option<String>, Vec<Order>>,
+    bids: HashMap<Option<String>, Vec<Order>>,
     errors: Option<String>,
 }
 
@@ -316,8 +316,14 @@ pub fn transform_message(message: Message) -> Result<Message, String> {
 
     for item in parsed_message {
         // Check if `target_quantity` is null or empty and skip the current iteration if it is.
-        if item.target_quantity.is_empty() {
-            continue; // Skip this item if its `target_quantity` is null/empty.
+        if item.target_quantity.is_none() {
+            continue; // Skip this item if its `target_quantity` is None.
+        }
+
+        if let Some(ref qty) = item.target_quantity {
+            if qty.ends_with(".00") {
+                continue;
+            }
         }
         let side = if item.side == "buy" { "bids" } else { "asks" };
         let price;
