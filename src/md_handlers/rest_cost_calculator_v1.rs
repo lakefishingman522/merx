@@ -11,7 +11,7 @@ use axum::{
 };
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+// use serde_json::Value;
 use std::sync::Arc;
 
 use crate::auth::check_token_and_authenticate;
@@ -298,14 +298,14 @@ pub struct Order {
     price: String,
     //
     totals: HashMap<String, serde_json::Value>, // Placeholder
-    orders: HashMap<String, serde_json::Value>, // Placeholder
+    orders: HashMap<String, Vec<String>>,       // Placeholder
 }
 
 pub fn transform_message(message: Message) -> Result<Message, String> {
     let mut asks = HashMap::new();
     let mut bids = HashMap::new();
 
-    let parsed_message: RecievedMessage = match serde_json::from_str(&message.to_string()) {
+    let parsed_message: Vec<InputData> = match serde_json::from_str(&message.to_string()) {
         Ok(msg) => msg,
         Err(e) => {
             tracing::error!("Error parsing message: {}", message);
@@ -314,14 +314,31 @@ pub fn transform_message(message: Message) -> Result<Message, String> {
         }
     };
 
-    for item in parsed_message.data {
+    for item in parsed_message {
+        // Check if `target_quantity` is null or empty and skip the current iteration if it is.
+        if item.target_quantity.is_empty() {
+            continue; // Skip this item if its `target_quantity` is null/empty.
+        }
         let side = if item.side == "buy" { "bids" } else { "asks" };
-        let price = calculate_price(&item);
+        let price;
+        let calculated_price = calculate_price(&item);
+
+        match calculated_price {
+            Ok(price_) => {
+                price = price_.to_string();
+            }
+            Err(err_msg) => {
+                return Err(format!("Error calculating price: {}", err_msg));
+            }
+        };
+
+        let orders = item.sweep_orders;
+        let totals = item.totals;
 
         let order = Order {
             price,
-            totals: HashMap::new(), // Fill in as required
-            orders: HashMap::new(), // Fill in as required
+            totals: totals, // HashMap::new(), // Fill in as required
+            orders: orders, // HashMap::new(), // Fill in as required
         };
 
         let quantity_key = item.target_quantity;
@@ -355,6 +372,27 @@ pub fn transform_message(message: Message) -> Result<Message, String> {
     Ok(transformed_message)
 }
 
-fn calculate_price(_item: &InputData) -> String {
-    return "100".to_string();
+fn calculate_price(item: &InputData) -> Result<f64, &'static str> {
+    // Attempting to access "all" section inside "totals"
+    if let Some(all) = item.totals.get("all") {
+        let gross_consideration: f64 = all
+            .get("gross_consideration")
+            .and_then(|v| v.as_str())
+            .and_then(|v| v.parse::<f64>().ok())
+            .ok_or("Could not parse gross consideration")?;
+
+        let quantity: f64 = all
+            .get("quantity")
+            .and_then(|v| v.as_str())
+            .and_then(|v| v.parse::<f64>().ok())
+            .ok_or("Could not parse quantity")?;
+
+        if quantity != 0f64 {
+            return Ok(gross_consideration / quantity);
+        } else {
+            return Err("Quantity is zero, cannot divide by zero");
+        }
+    }
+
+    Err("Could not find 'all' section in totals")
 }
