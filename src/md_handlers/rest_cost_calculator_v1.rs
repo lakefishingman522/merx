@@ -11,6 +11,7 @@ use axum::{
 };
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::sync::Arc;
 
 use crate::auth::check_token_and_authenticate;
@@ -20,6 +21,7 @@ use crate::{
     state::ConnectionState,
 };
 use tokio::sync::mpsc::Sender;
+use tokio_tungstenite::tungstenite::Message;
 use tracing::info;
 
 pub type Tx = Sender<axum::extract::ws::Message>;
@@ -239,7 +241,7 @@ pub fn handle_subscription(
 
     // Construct the WebSocket URL string
     let ws_endpoint = format!(
-        "/ws/cost-calculator/{}?side=both&funding_quantity={}&interval_ms=1000&markets={}",
+        "/ws/cost-calculator/{}?side=both&target_quantity={}&interval_ms=2500&markets={}",
         parsed_sub_msg.currency_pair, quantities_str, exchanges_str
     );
 
@@ -266,4 +268,93 @@ pub fn handle_subscription(
             }
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct InputData {
+    side: String,
+    markets: String,
+    target_quantity: String,
+    sweep_orders: HashMap<String, Vec<String>>,
+    totals: HashMap<String, serde_json::Value>,
+    // others if needed
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct RecievedMessage {
+    data: Vec<InputData>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct OutputMessage {
+    // symbol: String,
+    asks: HashMap<String, Vec<Order>>,
+    bids: HashMap<String, Vec<Order>>,
+    errors: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Order {
+    price: String,
+    //
+    totals: HashMap<String, serde_json::Value>, // Placeholder
+    orders: HashMap<String, serde_json::Value>, // Placeholder
+}
+
+pub fn transform_message(message: Message) -> Result<Message, String> {
+    let mut asks = HashMap::new();
+    let mut bids = HashMap::new();
+
+    let parsed_message: RecievedMessage = match serde_json::from_str(&message.to_string()) {
+        Ok(msg) => msg,
+        Err(e) => {
+            tracing::error!("Error parsing message: {}", message);
+            tracing::error!("Error parsing message: {}", e);
+            return Err(format!("Error parsing message: {}", e));
+        }
+    };
+
+    for item in parsed_message.data {
+        let side = if item.side == "buy" { "bids" } else { "asks" };
+        let price = calculate_price(&item);
+
+        let order = Order {
+            price,
+            totals: HashMap::new(), // Fill in as required
+            orders: HashMap::new(), // Fill in as required
+        };
+
+        let quantity_key = item.target_quantity;
+        match side {
+            "bids" => bids
+                .entry(quantity_key)
+                .or_insert_with(Vec::new)
+                .push(order),
+            "asks" => asks
+                .entry(quantity_key)
+                .or_insert_with(Vec::new)
+                .push(order),
+            _ => return Err("Unrecognized side in data".to_string()),
+        }
+    }
+
+    let converted_message = OutputMessage {
+        // symbol,
+        asks,
+        bids,
+        errors: None, // Populate based on your error handling logic
+    };
+
+    let transformed_message = match serde_json::to_string(&converted_message) {
+        Ok(msg) => Message::Text(msg),
+        Err(e) => {
+            tracing::error!("Error serializing message: {}", e);
+            return Err(format!("Error serializing message: {}", e));
+        }
+    };
+    Ok(transformed_message)
+}
+
+fn calculate_price(_item: &InputData) -> String {
+    return "100".to_string();
 }
