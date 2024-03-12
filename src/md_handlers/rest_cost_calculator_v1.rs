@@ -297,8 +297,10 @@ pub struct OutputMessage {
 pub struct Order {
     price: String,
     //
-    totals: HashMap<String, serde_json::Value>, // Placeholder
-    orders: HashMap<String, Vec<String>>,       // Placeholder
+    totals: Option<serde_json::Value>,    // Placeholder
+    orders: HashMap<String, Vec<String>>, // Placeholder
+    //
+    quantity: String,
 }
 
 pub fn transform_message(message: Message) -> Result<Message, String> {
@@ -316,16 +318,17 @@ pub fn transform_message(message: Message) -> Result<Message, String> {
 
     for item in parsed_message {
         // Check if `target_quantity` is null or empty and skip the current iteration if it is.
-        if item.target_quantity.is_none() {
-            continue; // Skip this item if its `target_quantity` is None.
-        }
-
+        let quantity;
         if let Some(ref qty) = item.target_quantity {
             if qty.ends_with(".00") {
                 continue;
             }
+            quantity = qty.clone();
+        } else {
+            continue;
         }
-        let side = if item.side == "buy" { "bids" } else { "asks" };
+
+        let side = if item.side == "buy" { "asks" } else { "bids" };
         let price;
         let calculated_price = calculate_price(&item);
 
@@ -339,12 +342,13 @@ pub fn transform_message(message: Message) -> Result<Message, String> {
         };
 
         let orders = item.sweep_orders;
-        let totals = item.totals;
+        let totals = item.totals.get("all");
 
         let order = Order {
             price,
-            totals: totals, // HashMap::new(), // Fill in as required
-            orders: orders, // HashMap::new(), // Fill in as required
+            totals: totals.cloned(), // HashMap::new(), // Fill in as required
+            orders: orders,          // HashMap::new(), // Fill in as required
+            quantity: quantity.clone(),
         };
 
         let quantity_key = item.target_quantity;
