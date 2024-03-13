@@ -270,15 +270,15 @@ async fn axum_handle_socket(
         loop {
             sleep(Duration::from_millis(1000)).await;
             {
-                // if matches!(subscription_type_clone, SubscriptionType::Subscription)
-                //     || matches!(
-                //         subscription_type_clone,
-                //         SubscriptionType::PublicSubscription
-                //     ) && (tokio::time::Instant::now() - connection_time
-                //         < Duration::from_secs(20))
-                // {
-                //     continue;
-                // }
+                if (matches!(subscription_type_clone, SubscriptionType::Subscription)
+                    || matches!(
+                        subscription_type_clone,
+                        SubscriptionType::PublicSubscription
+                    ))
+                    && (tokio::time::Instant::now() - connection_time < Duration::from_secs(20))
+                {
+                    continue;
+                }
 
                 if !connection_state_clone.is_client_still_active(&client_address) {
                     info!(
