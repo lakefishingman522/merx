@@ -1,3 +1,4 @@
+use chrono::prelude::*;
 use std::{
     collections::HashMap,
     net::{IpAddr, SocketAddr},
@@ -33,6 +34,7 @@ pub type Tx = Sender<axum::extract::ws::Message>;
 pub type SubscriptionState = HashMap<Subscription, HashMap<SocketAddr, Tx>>;
 pub type SubscriptionCount = HashMap<SocketAddr, u32>;
 pub type SubscriptionIPCount = HashMap<IpAddr, u32>;
+pub type SubscriptionBad = HashMap<Subscription, DateTime<Utc>>;
 
 pub type WebSocketLimitState = HashMap<WebSocketLimitRoute, HashMap<String, u32>>;
 
@@ -60,6 +62,8 @@ pub struct ConnectionStateStruct {
     pub subscription_count: RwLock<SubscriptionCount>,
     pub subscription_ip_count: RwLock<SubscriptionIPCount>,
 
+    pub subscription_bad: RwLock<SubscriptionBad>,
+
     pub websocket_limit_state: RwLock<WebSocketLimitState>,
 
     pub users: RwLock<Users>,
@@ -80,6 +84,7 @@ impl ConnectionStateStruct {
             subscription_state: RwLock::new(HashMap::new()),
             subscription_count: RwLock::new(HashMap::new()),
             subscription_ip_count: RwLock::new(HashMap::new()),
+            subscription_bad: RwLock::new(HashMap::new()),
 
             websocket_limit_state: RwLock::new(HashMap::new()),
 
