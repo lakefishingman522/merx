@@ -1,4 +1,4 @@
-use chrono::prelude::*;
+// use chrono::prelude::*;
 use std::{
     collections::HashMap,
     net::{IpAddr, SocketAddr},
@@ -13,7 +13,7 @@ use tokio::sync::mpsc::Sender;
 
 use axum::extract::ws::CloseFrame;
 use axum::extract::ws::Message as axum_Message;
-use chrono::Utc;
+use chrono::{DateTime, Duration as chrono_Duration, Utc};
 use reqwest::Client;
 use tokio::time::{sleep, timeout, Duration};
 use tokio_tungstenite::tungstenite::Message;
@@ -160,6 +160,20 @@ impl ConnectionStateStruct {
     ) -> Result<(), MerxErrorResponse> {
         let now = Instant::now();
         let already_subscribed: bool;
+        let mut bad_request = false;
+        {
+            let subscription_bad = self.subscription_bad.write().unwrap();
+            if subscription_bad.contains_key(&subscription) {
+                if let Some(last_time) = subscription_bad.get(&subscription) {
+                    if (Utc::now() - last_time) < chrono_Duration::minutes(30) {
+                        bad_request = true;
+                    }
+                }
+            }
+            if bad_request {
+                return Err(MerxErrorResponse::new(ErrorCode::LockedSubscription));
+            }
+        }
         {
             let mut subscription_state = self.subscription_state.write().unwrap();
             let mut subscription_count = self.subscription_count.write().unwrap();
@@ -621,6 +635,15 @@ pub fn subscribe_to_market_data(
                     connection_state.subscription_count.write().unwrap();
                 let mut locked_subscription_ip_count =
                     connection_state.subscription_ip_count.write().unwrap();
+
+                {
+                    //
+                    let mut locked_subscription_bad =
+                        connection_state.subscription_bad.write().unwrap(); // TODO: lock requests for some time, 30 mins
+                    let current_time = Utc::now();
+                    locked_subscription_bad.insert(subscription.clone(), current_time);
+                }
+
                 let listener_hash_map = locked_subscription_state.get(&subscription);
                 let active_listeners = match listener_hash_map {
                     Some(listeners) => listeners.iter().map(|(_, ws_sink)| ws_sink),
