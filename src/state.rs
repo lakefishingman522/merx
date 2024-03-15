@@ -22,7 +22,7 @@ use tracing::{error, info, warn};
 
 use crate::{
     error::{ErrorCode, MerxErrorResponse},
-    md_handlers::{cbbo_v1, market_depth_v1},
+    md_handlers::{cbbo_v1, market_depth_v1, rest_cost_calculator_v1},
     routes_config::{MarketDataType, WebSocketLimitRoute, WebSocketLimitType},
     subscriptions::{SubTraits, Subscription},
     symbols::Symbols,
@@ -797,7 +797,9 @@ pub fn subscribe_to_market_data(
                                 }
                                 MarketDataType::Direct => Ok(message_text),
                                 MarketDataType::RestCostCalculatorV1 => {
-                                    Err("Unexpected Market Data Type".into())
+                                    rest_cost_calculator_v1::transform_message(message_text)
+                                    // Ok(message_text)
+                                    // Err("Unexpected Market Data Type".into())
                                 }
                             };
 

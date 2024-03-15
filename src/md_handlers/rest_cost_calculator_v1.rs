@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+use crate::error::{ErrorCode, MerxErrorResponse};
+use crate::subscriptions::{DirectStruct, Subscription};
+use std::{collections::HashMap, net::SocketAddr};
 
 use axum::{
     body::Body,
@@ -8,12 +10,21 @@ use axum::{
     Extension,
 };
 use reqwest::{Client, StatusCode};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+// use serde_json::Value;
+use std::sync::Arc;
 
 use crate::auth::check_token_and_authenticate;
 use crate::functions::URIs;
-use crate::state::ConnectionState;
+use crate::{
+    routes_config::{MarketDataType, WebSocketLimitRoute},
+    state::ConnectionState,
+};
+use tokio::sync::mpsc::Sender;
+use tokio_tungstenite::tungstenite::Message;
 use tracing::info;
+
+pub type Tx = Sender<axum::extract::ws::Message>;
 
 #[derive(Deserialize)]
 #[allow(dead_code)]
@@ -97,4 +108,301 @@ pub async fn handle_request(
             .body(Body::from("Unauthorized".to_string()))
             .unwrap(),
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SubscriptionMessage {
+    currency_pair: String,
+    exchanges: Vec<String>,
+    quantities: Vec<f64>,
+}
+
+pub fn handle_subscription(
+    client_address: &SocketAddr,
+    connection_state: &ConnectionState,
+    subscription_msg: String,
+    cbag_uri: String,
+    sender: Tx,
+    market_data_type: MarketDataType,
+    username: &str,
+    market_data_id: Option<String>,
+    websocketlimit_route: Option<&WebSocketLimitRoute>,
+) {
+    info!(
+        "Received otc cost calculator subscription message: {}",
+        subscription_msg
+    );
+
+    //check that state is ready
+    if !connection_state.is_ready() {
+        match sender.try_send(axum::extract::ws::Message::Text(
+            MerxErrorResponse::new(ErrorCode::ServerInitializing).to_json_str(),
+        )) {
+            Ok(_) => {}
+            Err(_try_send_error) => {
+                // warn!("Buffer probably full.");
+            }
+        };
+        return;
+    }
+
+    let parsed_sub_msg: SubscriptionMessage = match serde_json::from_str(&subscription_msg) {
+        Ok(msg) => msg,
+        Err(e) => {
+            match sender.try_send(axum::extract::ws::Message::Text(
+                MerxErrorResponse::new(ErrorCode::InvalidSubscriptionMessage).to_json_str(),
+            )) {
+                Ok(_) => {}
+                Err(_try_send_error) => {
+                    // warn!("Buffer probably full.");
+                }
+            };
+            tracing::error!("Error parsing subscription message: {}", e);
+            return;
+        }
+    };
+    //check that the currency pair is valid
+    match connection_state.is_pair_valid(&parsed_sub_msg.currency_pair) {
+        Ok(_) => {}
+        Err(merx_error_response) => {
+            match sender.try_send(axum::extract::ws::Message::Text(
+                merx_error_response.to_json_str(),
+            )) {
+                Ok(_) => {}
+                Err(_try_send_error) => {
+                    // warn!("Buffer probably full.");
+                }
+            };
+            return;
+        }
+    }
+
+    if parsed_sub_msg.exchanges.is_empty() {
+        match sender.try_send(axum::extract::ws::Message::Text(
+            MerxErrorResponse::new_and_override_error_text(
+                ErrorCode::InvalidExchanges,
+                "No Exchanges Found. At least one exchange must be provided",
+            )
+            .to_json_str(),
+        )) {
+            Ok(_) => {}
+            Err(_try_send_error) => {
+                // warn!("Buffer probably full.");
+            }
+        };
+        return;
+    }
+
+    let cbag_markets = match connection_state.validate_exchanges_vector(
+        username,
+        &parsed_sub_msg.exchanges,
+        market_data_id,
+    ) {
+        Ok(cbag_markets) => cbag_markets,
+        Err(merx_error_response) => {
+            match sender.try_send(axum::extract::ws::Message::Text(
+                merx_error_response.to_json_str(),
+            )) {
+                Ok(_) => {}
+                Err(_try_send_error) => {
+                    // warn!("Buffer probably full.");
+                }
+            };
+            return;
+        }
+    };
+
+    // Convert quantities to a comma-separated string
+    let quantities_str = parsed_sub_msg
+        .quantities
+        .iter()
+        .map(|quantity| quantity.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let exchanges_str = cbag_markets
+        .iter()
+        .map(|exchange| {
+            // Remove 'sim_' prefix if present
+            let trimmed_exchange = if exchange.starts_with("SIM_") {
+                &exchange["SIM_".len()..]
+            } else {
+                exchange
+            };
+            // Map to specific names or convert to uppercase
+            match trimmed_exchange.to_lowercase().as_str() {
+                "gdax" => String::from("COINBASE"),
+                "huobipro" => String::from("HUOBI"),
+                _ => trimmed_exchange.to_uppercase(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+
+    // Construct the WebSocket URL string
+    let ws_endpoint = format!(
+        "/ws/cost-calculator/{}?side=both&target_quantity={}&interval_ms=2500&markets={}",
+        parsed_sub_msg.currency_pair, quantities_str, exchanges_str
+    );
+
+    let subscription = Subscription::Direct(DirectStruct::new(market_data_type, ws_endpoint));
+
+    match connection_state.add_client_to_subscription(
+        client_address,
+        subscription,
+        cbag_uri,
+        sender.clone(),
+        Arc::clone(connection_state),
+        websocketlimit_route,
+        username.to_string(),
+    ) {
+        Ok(_) => {}
+        Err(merx_error_response) => {
+            match sender.try_send(axum::extract::ws::Message::Text(
+                merx_error_response.to_json_str(),
+            )) {
+                Ok(_) => {}
+                Err(_try_send_error) => {
+                    // warn!("Buffer probably full.");
+                }
+            }
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct InputData {
+    side: String,
+    markets: String,
+    target_quantity: Option<String>,
+    sweep_orders: HashMap<String, Vec<String>>,
+    totals: HashMap<String, serde_json::Value>,
+    // others if needed
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct RecievedMessage {
+    data: Vec<InputData>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct OutputMessage {
+    // symbol: String,
+    asks: HashMap<Option<String>, Vec<Order>>,
+    bids: HashMap<Option<String>, Vec<Order>>,
+    errors: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Order {
+    price: String,
+    //
+    totals: Option<serde_json::Value>,    // Placeholder
+    orders: HashMap<String, Vec<String>>, // Placeholder
+    //
+    quantity: String,
+}
+
+pub fn transform_message(message: Message) -> Result<Message, String> {
+    let mut asks = HashMap::new();
+    let mut bids = HashMap::new();
+
+    let parsed_message: Vec<InputData> = match serde_json::from_str(&message.to_string()) {
+        Ok(msg) => msg,
+        Err(e) => {
+            tracing::error!("Error parsing message: {}", message);
+            tracing::error!("Error parsing message: {}", e);
+            return Err(format!("Error parsing message: {}", e));
+        }
+    };
+
+    for item in parsed_message {
+        // Check if `target_quantity` is null or empty and skip the current iteration if it is.
+        let quantity;
+        if let Some(ref qty) = item.target_quantity {
+            if qty.ends_with(".00") {
+                continue;
+            }
+            quantity = qty.clone();
+        } else {
+            continue;
+        }
+
+        let side = if item.side == "buy" { "asks" } else { "bids" };
+        let price;
+        let calculated_price = calculate_price(&item);
+
+        match calculated_price {
+            Ok(price_) => {
+                price = price_.to_string();
+            }
+            Err(err_msg) => {
+                return Err(format!("Error calculating price: {}", err_msg));
+            }
+        };
+
+        let orders = item.sweep_orders;
+        let totals = item.totals.get("all");
+
+        let order = Order {
+            price,
+            totals: totals.cloned(), // HashMap::new(), // Fill in as required
+            orders: orders,          // HashMap::new(), // Fill in as required
+            quantity: quantity.clone(),
+        };
+
+        let quantity_key = item.target_quantity;
+        match side {
+            "bids" => bids
+                .entry(quantity_key)
+                .or_insert_with(Vec::new)
+                .push(order),
+            "asks" => asks
+                .entry(quantity_key)
+                .or_insert_with(Vec::new)
+                .push(order),
+            _ => return Err("Unrecognized side in data".to_string()),
+        }
+    }
+
+    let converted_message = OutputMessage {
+        // symbol,
+        asks,
+        bids,
+        errors: None, // Populate based on your error handling logic
+    };
+
+    let transformed_message = match serde_json::to_string(&converted_message) {
+        Ok(msg) => Message::Text(msg),
+        Err(e) => {
+            tracing::error!("Error serializing message: {}", e);
+            return Err(format!("Error serializing message: {}", e));
+        }
+    };
+    Ok(transformed_message)
+}
+
+fn calculate_price(item: &InputData) -> Result<f64, &'static str> {
+    // Attempting to access "all" section inside "totals"
+    if let Some(all) = item.totals.get("all") {
+        let gross_consideration: f64 = all
+            .get("gross_consideration")
+            .and_then(|v| v.as_str())
+            .and_then(|v| v.parse::<f64>().ok())
+            .ok_or("Could not parse gross consideration")?;
+
+        let quantity: f64 = all
+            .get("quantity")
+            .and_then(|v| v.as_str())
+            .and_then(|v| v.parse::<f64>().ok())
+            .ok_or("Could not parse quantity")?;
+
+        if quantity != 0f64 {
+            return Ok(gross_consideration / quantity);
+        } else {
+            return Err("Quantity is zero, cannot divide by zero");
+        }
+    }
+
+    Err("Could not find 'all' section in totals")
 }

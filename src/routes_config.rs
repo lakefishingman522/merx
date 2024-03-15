@@ -22,6 +22,7 @@ pub static ROUTES: phf::Map<&'static str, MarketDataType> = phf_map! {
     "/api/streaming/cbbo" => MarketDataType::CbboV1,
     "/api/streaming/market_depth" => MarketDataType::MarketDepthV1,
     "/api/cost_calculator" => MarketDataType::RestCostCalculatorV1,
+    "/api/streaming/cost_calculator" => MarketDataType::RestCostCalculatorV1,
     "/api/public/streaming/cbbo" => MarketDataType::CbboV1,
     "/api/public/streaming/market_depth" => MarketDataType::MarketDepthV1,
 };
@@ -30,7 +31,7 @@ pub static SUB_TYPE: phf::Map<&'static str, SubscriptionType> = phf_map! {
     // "/legacy-cbbo/:symbol" => Routes::CBBO,
     "/api/streaming/cbbo" => SubscriptionType::Subscription,
     "/api/streaming/market_depth" => SubscriptionType::Subscription,
-    "/api/cost_calculator" => SubscriptionType::AuthenticatedRest,
+    "/api/streaming/cost_calculator" => SubscriptionType::Subscription,
     "/api/public/streaming/cbbo" => SubscriptionType::PublicSubscription,
     "/api/public/streaming/market_depth" => SubscriptionType::PublicSubscription,
 };
@@ -51,11 +52,11 @@ pub static WS_LIMIT_ROUTES: phf::Map<&'static str, WebSocketLimitRoute> = phf_ma
     "/api/streaming/cbbo" => WebSocketLimitRoute {
         path: "/api/streaming/cbbo",
         limit_type: WebSocketLimitType::Token,
-        limit_number: 100
+        limit_number: 1
     },
     "/api/streaming/market_depth" => WebSocketLimitRoute {
         path: "/api/streaming/market_depth",
         limit_type: WebSocketLimitType::Token,
-        limit_number: 100
+        limit_number: 1
     },
 };
