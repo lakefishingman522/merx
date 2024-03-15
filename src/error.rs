@@ -71,6 +71,7 @@ pub enum ErrorCode {
     ServerError = 101007,
     // Websocket Limit Number errs
     ReachedWebSocketLimitNumber = 101008,
+    LockedSubscription = 101009,
 }
 
 impl serde::ser::Serialize for ErrorCode {
@@ -100,6 +101,7 @@ impl fmt::Display for ErrorCode {
             ErrorCode::AlreadySubscribed => write!(f, "ALREADY_SUBSCRIBED"),
             ErrorCode::ServerError => write!(f, "SERVER_ERROR"),
             ErrorCode::ReachedWebSocketLimitNumber => write!(f, "REACHED_WEBSOCKET_LIMIT_NUMBER"),
+            ErrorCode::LockedSubscription => write!(f, "LOCKED_REQUEST_FOR_SOME_TIME"),
         }
     }
 }
@@ -130,6 +132,9 @@ impl ErrorCode {
             ErrorCode::AlreadySubscribed => "Already subscribed to this subscription",
             ErrorCode::ServerError => "Unexpected Server Error",
             ErrorCode::ReachedWebSocketLimitNumber => "Reached websocket limit number",
+            ErrorCode::LockedSubscription => {
+                "Merx Locked that request for some time, maybe 30 mins"
+            }
         }
     }
 }

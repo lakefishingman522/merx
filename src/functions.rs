@@ -270,12 +270,13 @@ async fn axum_handle_socket(
         loop {
             sleep(Duration::from_millis(1000)).await;
             {
-                if matches!(subscription_type_clone, SubscriptionType::Subscription)
+                if (matches!(subscription_type_clone, SubscriptionType::Subscription)
                     || matches!(
                         subscription_type_clone,
                         SubscriptionType::PublicSubscription
-                    ) && (tokio::time::Instant::now() - connection_time
-                        < Duration::from_secs(20))
+                    ))
+                    && (tokio::time::Instant::now() - connection_time < Duration::from_secs(20))
+
                 {
                     continue;
                 }
