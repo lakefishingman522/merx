@@ -13,7 +13,7 @@ use tokio::sync::mpsc::Sender;
 
 use axum::extract::ws::CloseFrame;
 use axum::extract::ws::Message as axum_Message;
-use chrono::{DateTime, Duration as chrono_Duration, Utc};
+use chrono::{Duration as chrono_Duration, Utc};
 use reqwest::Client;
 use tokio::time::{sleep, timeout, Duration};
 use tokio_tungstenite::tungstenite::Message;
@@ -168,7 +168,7 @@ impl ConnectionStateStruct {
                     if Utc::now() - locked_time < chrono_Duration::minutes(30) {
                         bad_request = true;
                     } else {
-                        time_log.locked = None;
+                        subscription_bad.remove(&subscription);
                     }
                 }
             }
@@ -645,8 +645,10 @@ pub fn subscribe_to_market_data(
                     let current_time = Utc::now();
                     if let Some(time_log) = locked_subscription_bad.get_mut(&subscription) {
                         if (current_time - time_log.temp) < chrono_Duration::minutes(5) {
+                            info!("(current_time - time_log.temp) < chrono_Duration::minutes(5)");
                         } else {
                             time_log.locked = Some(current_time);
+                            error!("locked!");
                         }
                     } else {
                         locked_subscription_bad.insert(
@@ -657,6 +659,7 @@ pub fn subscribe_to_market_data(
                                 locked: None,
                             },
                         );
+                        warn!("added subscription to temp store: {}", &ws_endpoint);
                     }
                 }
 
