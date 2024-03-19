@@ -185,3 +185,13 @@ impl SubTraits for DirectStruct {
         10000
     }
 }
+
+//
+use chrono::{DateTime, Utc};
+
+#[derive(Clone)]
+pub struct TimeLog {
+    pub temp: DateTime<Utc>,
+    // pub tried: u8,
+    pub locked: Option<DateTime<Utc>>,
+}
