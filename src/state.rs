@@ -13,7 +13,7 @@ use tokio::sync::mpsc::Sender;
 
 use axum::extract::ws::CloseFrame;
 use axum::extract::ws::Message as axum_Message;
-use chrono::{DateTime, Duration as chrono_Duration, Utc};
+use chrono::{Duration as chrono_Duration, Utc};
 use reqwest::Client;
 use tokio::time::{sleep, timeout, Duration};
 use tokio_tungstenite::tungstenite::Message;
@@ -24,7 +24,7 @@ use crate::{
     error::{ErrorCode, MerxErrorResponse},
     md_handlers::{cbbo_v1, market_depth_v1, rest_cost_calculator_v1},
     routes_config::{MarketDataType, WebSocketLimitRoute, WebSocketLimitType},
-    subscriptions::{SubTraits, Subscription},
+    subscriptions::{SubTraits, Subscription, TimeLog},
     symbols::Symbols,
     user::{UserResponse, Users},
 };
@@ -34,7 +34,7 @@ pub type Tx = Sender<axum::extract::ws::Message>;
 pub type SubscriptionState = HashMap<Subscription, HashMap<SocketAddr, Tx>>;
 pub type SubscriptionCount = HashMap<SocketAddr, u32>;
 pub type SubscriptionIPCount = HashMap<IpAddr, u32>;
-pub type SubscriptionBad = HashMap<Subscription, DateTime<Utc>>;
+pub type SubscriptionBad = HashMap<Subscription, TimeLog>;
 
 pub type WebSocketLimitState = HashMap<WebSocketLimitRoute, HashMap<String, u32>>;
 
@@ -162,11 +162,13 @@ impl ConnectionStateStruct {
         let already_subscribed: bool;
         let mut bad_request = false;
         {
-            let subscription_bad = self.subscription_bad.write().unwrap();
-            if subscription_bad.contains_key(&subscription) {
-                if let Some(last_time) = subscription_bad.get(&subscription) {
-                    if (Utc::now() - last_time) < chrono_Duration::minutes(30) {
+            let mut subscription_bad = self.subscription_bad.write().unwrap();
+            if let Some(time_log) = subscription_bad.get_mut(&subscription) {
+                if let Some(locked_time) = time_log.locked {
+                    if Utc::now() - locked_time < chrono_Duration::minutes(30) {
                         bad_request = true;
+                    } else {
+                        subscription_bad.remove(&subscription);
                     }
                 }
             }
@@ -641,7 +643,24 @@ pub fn subscribe_to_market_data(
                     let mut locked_subscription_bad =
                         connection_state.subscription_bad.write().unwrap(); // TODO: lock requests for some time, 30 mins
                     let current_time = Utc::now();
-                    locked_subscription_bad.insert(subscription.clone(), current_time);
+                    if let Some(time_log) = locked_subscription_bad.get_mut(&subscription) {
+                        if (current_time - time_log.temp) < chrono_Duration::minutes(5) {
+                            info!("(current_time - time_log.temp) < chrono_Duration::minutes(5)");
+                        } else {
+                            time_log.locked = Some(current_time);
+                            error!("locked!");
+                        }
+                    } else {
+                        locked_subscription_bad.insert(
+                            subscription.clone(),
+                            TimeLog {
+                                temp: current_time,
+                                // tried: 0,
+                                locked: None,
+                            },
+                        );
+                        warn!("added subscription to temp store: {}", &ws_endpoint);
+                    }
                 }
 
                 let listener_hash_map = locked_subscription_state.get(&subscription);
