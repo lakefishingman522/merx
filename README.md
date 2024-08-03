@@ -1,5 +1,5 @@
 # MERX - CoinRoutes Market Data
-
+   
 Merx is a multi-threaded market data handler that pulls and serves data from cbag to clients. It is built purely in Rust and uses rust's tokio runtime and axum, a web application framework.
 
 Merx will de-duplicate subscriptions. I.e. if multiple clients request the same subscription, only a single subscription will be made to cbag.
