@@ -5,7 +5,7 @@ Merx is a multi-threaded market data handler that pulls and serves data from cba
 Merx will de-duplicate subscriptions. I.e. if multiple clients request the same subscription, only a single subscription will be made to cbag.
 
 Detailed documentation for merx can be found [here](https://dhuita5s1xx86.cloudfront.net/apis/merx/merx.html)
-
+   
      
 ## Building and running for prod
 
