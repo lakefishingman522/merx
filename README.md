@@ -15,7 +15,7 @@ cargo build --release
 ```
     
 This will create an executable named `merx` in the `target/releases` directory which can be run:
-```
+``` 
 ./target/release/merx --cbag-uri internal-prod-cbag-726087086.ap-northeast-1.elb.amazonaws.com:8080 --auth-uri portal.coinroutes.com --prod --token <TOKEN>
 ```
 
