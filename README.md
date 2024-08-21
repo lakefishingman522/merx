@@ -7,7 +7,7 @@ Merx will de-duplicate subscriptions. I.e. if multiple clients request the same 
 Detailed documentation for merx can be found [here](https://dhuita5s1xx86.cloudfront.net/apis/merx/merx.html)
    
             
-## Building and running for prod
+## Building and running for prod 
 
 To build merx optimally for production run:
 ```   
